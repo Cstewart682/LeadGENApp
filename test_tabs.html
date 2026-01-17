@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tab Test</title>
+<style>
+body{font-family:Arial;padding:20px}
+.tab{padding:10px 20px;border:none;background:#e8e8e8;cursor:pointer;border-radius:5px;margin-right:5px}
+.tab:hover{background:#d0d0d0}
+.tab.on{background:#1a3a5c;color:#fff}
+.panel{display:none;background:#f8f9fa;padding:20px;border-radius:8px;margin-top:20px}
+.panel.on{display:block}
+</style>
+</head>
+<body>
+
+<h1>Tab Click Test</h1>
+<p>If the tabs below work, the fix is correct and we need to update your app.py file.</p>
+
+<div>
+<button class="tab on" onclick="showTab('tab1', this)">Tab 1</button>
+<button class="tab" onclick="showTab('tab2', this)">Tab 2</button>
+<button class="tab" onclick="showTab('tab3', this)">Tab 3</button>
+</div>
+
+<div class="panel on" id="p-tab1">
+<h2>Tab 1 Content</h2>
+<p>This is tab 1. If you can see this when you click Tab 1, JavaScript is working!</p>
+</div>
+
+<div class="panel" id="p-tab2">
+<h2>Tab 2 Content</h2>
+<p>This is tab 2. If you can see this when you click Tab 2, JavaScript is working!</p>
+</div>
+
+<div class="panel" id="p-tab3">
+<h2>Tab 3 Content</h2>
+<p>This is tab 3. If you can see this when you click Tab 3, JavaScript is working!</p>
+</div>
+
+<script>
+function $(id){return document.getElementById(id)}
+function showTab(t,el){
+  var tabs=document.getElementsByClassName('tab');
+  for(var i=0;i<tabs.length;i++)tabs[i].className='tab';
+  var panels=document.getElementsByClassName('panel');
+  for(var i=0;i<panels.length;i++)panels[i].className='panel';
+  if(el){
+    el.className='tab on';
+  }else{
+    for(var i=0;i<tabs.length;i++){
+      if(tabs[i].onclick&&tabs[i].onclick.toString().indexOf("'"+t+"'")>=0){
+        tabs[i].className='tab on';break;
+      }
+    }
+  }
+  $('p-'+t).className='panel on';
+}
+</script>
+
+</body>
+</html>
