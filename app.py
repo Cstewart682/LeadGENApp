@@ -113,12 +113,12 @@ th{background:#f0f2f5;font-size:11px;text-transform:uppercase}
 </div>
 
 <div class="tabs">
-<button class="tab on" onclick="showTab('leads')">Leads</button>
-<button class="tab" onclick="showTab('add')">Add New</button>
-<button class="tab" onclick="showTab('import')">Import</button>
-<button class="tab" onclick="showTab('outreach')">Outreach</button>
-<button class="tab" onclick="showTab('tenders')">Tenders</button>
-<button class="tab" onclick="showTab('settings')">Settings</button>
+<button class="tab on" onclick="showTab('leads', this)">Leads</button>
+<button class="tab" onclick="showTab('add', this)">Add New</button>
+<button class="tab" onclick="showTab('import', this)">Import</button>
+<button class="tab" onclick="showTab('outreach', this)">Outreach</button>
+<button class="tab" onclick="showTab('tenders', this)">Tenders</button>
+<button class="tab" onclick="showTab('settings', this)">Settings</button>
 </div>
 
 <div class="panel on" id="p-leads">
@@ -213,12 +213,20 @@ th{background:#f0f2f5;font-size:11px;text-transform:uppercase}
 var leads={}, cfg={}, tenders={}, curId=null, draftId=null;
 
 function $(id){return document.getElementById(id)}
-function showTab(t){
+function showTab(t,el){
   var tabs=document.getElementsByClassName('tab');
   for(var i=0;i<tabs.length;i++)tabs[i].className='tab';
   var panels=document.getElementsByClassName('panel');
   for(var i=0;i<panels.length;i++)panels[i].className='panel';
-  event.target.className='tab on';
+  if(el){
+    el.className='tab on';
+  }else{
+    for(var i=0;i<tabs.length;i++){
+      if(tabs[i].onclick&&tabs[i].onclick.toString().indexOf("'"+t+"'")>=0){
+        tabs[i].className='tab on';break;
+      }
+    }
+  }
   $('p-'+t).className='panel on';
   if(t=='outreach')updateOutreach();
   if(t=='settings')loadCfg();
