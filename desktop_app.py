@@ -77,6 +77,38 @@ DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # ============================================================================
+# JOBBER-STYLE COLOR SCHEME
+# ============================================================================
+COLORS = {
+    # Primary colors (Jobber-inspired)
+    'primary': '#0E73CC',      # Jobber blue
+    'primary_dark': '#0A5494',
+    'primary_light': '#E6F2FF',
+    'secondary': '#00A3A3',    # Teal/cyan
+    'secondary_dark': '#007A7A',
+
+    # Status colors
+    'success': '#2E7D32',      # Green
+    'warning': '#F57C00',      # Orange
+    'danger': '#D32F2F',       # Red
+    'info': '#0277BD',         # Light blue
+
+    # Neutral colors
+    'bg_primary': '#F7F9FC',   # Light background
+    'bg_secondary': '#FFFFFF', # White
+    'bg_tertiary': '#E8EEF4',  # Light gray-blue
+    'text_primary': '#212529', # Dark text
+    'text_secondary': '#6C757D', # Gray text
+    'text_light': '#FFFFFF',   # White text
+    'border': '#DEE2E6',       # Light border
+
+    # Signal colors
+    'signal_high': '#D4EDDA',  # Light green
+    'signal_med': '#FFF3CD',   # Light yellow
+    'signal_low': '#E9ECEF',   # Light gray
+}
+
+# ============================================================================
 # BACKEND FUNCTIONS
 # ============================================================================
 
@@ -102,6 +134,7 @@ class LeadGeneratorApp:
         self.root = root
         self.root.title("Calgary Industrial Lead Generator")
         self.root.geometry("1200x700")
+        self.root.configure(bg=COLORS['bg_primary'])
 
         # Load data
         self.leads = load_json(DATA_DIR / "leads.json")
@@ -135,7 +168,7 @@ class LeadGeneratorApp:
 
     def create_stats_bar(self):
         """Create statistics bar at top"""
-        stats_frame = tk.Frame(self.root, bg="#f0f0f0", height=80)
+        stats_frame = tk.Frame(self.root, bg=COLORS['bg_primary'], height=80)
         stats_frame.pack(fill=tk.X, padx=10, pady=10)
         stats_frame.pack_propagate(False)
 
@@ -150,15 +183,16 @@ class LeadGeneratorApp:
         ]
 
         for i, (label, key) in enumerate(stats):
-            frame = tk.Frame(stats_frame, bg="white", relief=tk.RAISED, borderwidth=1)
+            frame = tk.Frame(stats_frame, bg=COLORS['bg_secondary'], relief=tk.RAISED,
+                           borderwidth=1, highlightbackground=COLORS['border'], highlightthickness=1)
             frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
 
             value_label = tk.Label(frame, text="0", font=("Arial", 20, "bold"),
-                                  bg="white", fg="#1a3a5c")
+                                  bg=COLORS['bg_secondary'], fg=COLORS['primary'])
             value_label.pack(pady=(10, 0))
 
             text_label = tk.Label(frame, text=label, font=("Arial", 9),
-                                 bg="white", fg="#666")
+                                 bg=COLORS['bg_secondary'], fg=COLORS['text_secondary'])
             text_label.pack(pady=(0, 10))
 
             self.stat_labels[key] = value_label
@@ -211,7 +245,7 @@ class LeadGeneratorApp:
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Treeview
-        columns = ("Company", "Contact", "Email", "Signal", "Status")
+        columns = ("Company", "Contacts", "Signal", "Status")
         self.leads_tree = ttk.Treeview(table_frame, columns=columns, show="headings",
                                        yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
@@ -220,15 +254,13 @@ class LeadGeneratorApp:
 
         # Column headings
         self.leads_tree.heading("Company", text="Company")
-        self.leads_tree.heading("Contact", text="Contact")
-        self.leads_tree.heading("Email", text="Email")
+        self.leads_tree.heading("Contacts", text="Contact Information")
         self.leads_tree.heading("Signal", text="Signal Score")
         self.leads_tree.heading("Status", text="Status")
 
         # Column widths
-        self.leads_tree.column("Company", width=250)
-        self.leads_tree.column("Contact", width=150)
-        self.leads_tree.column("Email", width=200)
+        self.leads_tree.column("Company", width=200)
+        self.leads_tree.column("Contacts", width=450)
         self.leads_tree.column("Signal", width=100)
         self.leads_tree.column("Status", width=100)
 
@@ -242,9 +274,9 @@ class LeadGeneratorApp:
         btn_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
 
         tk.Button(btn_frame, text="✏️ Edit Selected", command=self.edit_lead,
-                 bg="#6c757d", fg="white", padx=10).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
-                 bg="#dc3545", fg="white", padx=10).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['danger'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
 
         self.refresh_leads()
 
@@ -302,11 +334,11 @@ class LeadGeneratorApp:
         btn_frame.grid(row=row, column=1, pady=20, sticky=tk.W)
 
         tk.Button(btn_frame, text="➕ Add Lead", command=self.add_lead,
-                 bg="#1a3a5c", fg="white", padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="➕ Add & Scrape Website", command=self.add_and_scrape,
-                 bg="#28a745", fg="white", padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🗑️ Clear Form", command=self.clear_add_form,
-                 bg="#6c757d", fg="white", padx=20, pady=8).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=20, pady=8).pack(side=tk.LEFT, padx=5)
 
     def create_import_tab(self):
         """Create import tab"""
@@ -327,7 +359,7 @@ class LeadGeneratorApp:
                       variable=self.li_filter_var).pack(anchor=tk.W, pady=(0, 10))
 
         tk.Button(li_frame, text="📂 Select LinkedIn CSV File", command=self.import_linkedin,
-                 bg="#0077b5", fg="white", padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
+                 bg=COLORS['info'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
 
         # CSV Import section
         csv_frame = tk.LabelFrame(tab, text="Import from CSV", padx=20, pady=20)
@@ -337,7 +369,7 @@ class LeadGeneratorApp:
                 wraplength=600, justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 10))
 
         tk.Button(csv_frame, text="📂 Select CSV File", command=self.import_csv,
-                 bg="#1a3a5c", fg="white", padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
 
     def create_outreach_tab(self):
         """Create outreach tracking tab"""
@@ -386,7 +418,7 @@ class LeadGeneratorApp:
         template_combo.pack(side=tk.LEFT, padx=(0, 20))
 
         tk.Button(sel_frame, text="📝 Generate Draft", command=self.generate_draft,
-                 bg="#1a3a5c", fg="white", padx=15, pady=5).pack(side=tk.LEFT)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT)
 
         # Draft display
         self.draft_display = scrolledtext.ScrolledText(draft_frame, height=15, wrap=tk.WORD)
@@ -397,9 +429,9 @@ class LeadGeneratorApp:
         draft_btn_frame.pack(fill=tk.X)
 
         tk.Button(draft_btn_frame, text="📋 Copy to Clipboard", command=self.copy_draft,
-                 bg="#6c757d", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(draft_btn_frame, text="✅ Mark as Sent", command=self.mark_sent,
-                 bg="#28a745", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
 
         self.update_outreach_stats()
 
@@ -416,7 +448,7 @@ class LeadGeneratorApp:
                 font=("Arial", 10)).pack(side=tk.LEFT)
 
         tk.Button(top_frame, text="🔄 Check for New Tenders", command=self.check_tenders,
-                 bg="#1a3a5c", fg="white", padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.RIGHT)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.RIGHT)
 
         # Tenders list
         self.tenders_text = scrolledtext.ScrolledText(tab, wrap=tk.WORD)
@@ -478,7 +510,7 @@ class LeadGeneratorApp:
 
         # Save button
         tk.Button(tab, text="💾 Save Settings", command=self.save_settings,
-                 bg="#28a745", fg="white", padx=30, pady=10, font=("Arial", 11, "bold")).pack(pady=20)
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=30, pady=10, font=("Arial", 11, "bold")).pack(pady=20)
 
     # ========================================================================
     # DATA METHODS
@@ -527,14 +559,66 @@ class LeadGeneratorApp:
             if status_filter != "All" and lead.get('status') != status_filter:
                 continue
 
+            # Format contact information with ALL emails and phones
+            contacts = self._format_all_contacts(lead)
+
             # Insert into tree
             self.leads_tree.insert('', tk.END, iid=lead_id, values=(
                 lead.get('company_name', ''),
-                lead.get('contact_name', '-'),
-                lead.get('contact_email') or lead.get('general_email', '-'),
+                contacts,
                 lead.get('signal_score', 0),
                 lead.get('status', 'New')
             ))
+
+    def _format_all_contacts(self, lead):
+        """Format all emails and phones for display with identifying info"""
+        parts = []
+
+        # Get all emails
+        all_emails = lead.get('all_emails', [])
+        general_email = lead.get('general_email', '')
+        contact_email = lead.get('contact_email', '')
+
+        # If all_emails not populated, use individual email fields
+        if not all_emails:
+            if general_email:
+                all_emails.append(general_email)
+            if contact_email and contact_email not in all_emails:
+                all_emails.append(contact_email)
+
+        # Display all emails with labels
+        for i, email in enumerate(all_emails):
+            if email == general_email or i == 0:
+                parts.append(f"📧 {email} (Primary)")
+            elif email == contact_email:
+                parts.append(f"📧 {email} (Contact)")
+            else:
+                parts.append(f"📧 {email}")
+
+        # Get all phones
+        all_phones = lead.get('all_phones', [])
+        general_phone = lead.get('general_phone', '')
+
+        # If all_phones not populated, use individual phone field
+        if not all_phones:
+            if general_phone:
+                all_phones.append(general_phone)
+
+        # Display all phones with labels
+        for i, phone in enumerate(all_phones):
+            if phone == general_phone or i == 0:
+                parts.append(f"📞 {phone} (Main)")
+            else:
+                parts.append(f"📞 {phone}")
+
+        # Add contact name if available
+        if lead.get('contact_name'):
+            name_part = f"👤 {lead['contact_name']}"
+            if lead.get('contact_title'):
+                name_part += f" ({lead['contact_title']})"
+            parts.insert(0, name_part)
+
+        return " | ".join(parts) if parts else "-"
 
     def refresh_tenders(self):
         """Refresh tenders display"""
@@ -1011,15 +1095,15 @@ class LeadGeneratorApp:
             self.view_lead_intelligence(lead, dialog)
 
         tk.Button(btn_frame, text="💾 Save", command=save_changes,
-                 bg="#1a3a5c", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🔍 Basic Scrape", command=scrape_now,
-                 bg="#28a745", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🎯 Enhanced Scrape", command=enhanced_scrape,
-                 bg="#007bff", fg="white", padx=15, pady=5, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['secondary'], fg=COLORS['text_light'], padx=15, pady=5, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="📊 View Intelligence", command=view_intel,
-                 bg="#ffc107", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['warning'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="❌ Cancel", command=dialog.destroy,
-                 bg="#6c757d", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
 
     def delete_lead(self):
         """Delete selected lead"""
@@ -1313,7 +1397,7 @@ SCORE BREAKDOWN:
         btn_frame.pack(fill=tk.X, padx=10, pady=10)
 
         tk.Button(btn_frame, text="Close", command=intel_window.destroy,
-                 bg="#6c757d", fg="white", padx=20, pady=8, font=("Arial", 10)).pack(side=tk.RIGHT)
+                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10)).pack(side=tk.RIGHT)
 
     def import_linkedin(self):
         """Import LinkedIn connections"""
