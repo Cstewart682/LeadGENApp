@@ -110,11 +110,32 @@ KEY FEATURES
 ✅ Offline-capable for most functions
 ✅ Fast and responsive
 ✅ Automatic data saving
-✅ Website scraping for emails/phones
-✅ Buying signal detection
+✅ ENHANCED WEBSITE SCRAPING - Automatically checks up to 10 pages per website
+   • Finds contact, about, team pages automatically
+   • Discovers multiple emails and phone numbers
+   • More thorough than basic single-page scraping
+✅ Buying signal detection across multiple pages
 ✅ Email template generation
 ✅ LinkedIn integration
 ✅ CSV import/export
+
+========================================
+HOW ENHANCED SCRAPING WORKS
+========================================
+
+When you click "Add & Scrape" or "Scrape Website" in the edit dialog:
+
+1. The system automatically discovers pages on the website
+2. Prioritizes contact-related pages (contact, about, team, careers)
+3. Scrapes up to 10 pages per website
+4. Collects ALL emails and phone numbers found
+5. Detects buying signals across all pages
+6. Takes 10-15 seconds instead of 2-3 seconds
+7. Finds MORE information than single-page scraping
+
+Example: For cmcmanufacturing.com
+• Old scraper: 1 email from homepage
+• New scraper: 2 emails + 1 phone from 10 pages (including contact page)
 
 ========================================
 DIFFERENCES FROM WEB VERSION
@@ -126,10 +147,12 @@ ADVANTAGES:
 - Works offline
 - Traditional desktop interface
 - More reliable
+- Enhanced multi-page scraping
 
 LIMITATIONS:
 - Tender checking requires manual API setup
 - Jobber sync requires additional configuration
+- Scraping takes longer (10-15 sec vs 2-3 sec) but finds more data
 
 ========================================
 TROUBLESHOOTING

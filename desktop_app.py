@@ -13,17 +13,62 @@ import csv
 from pathlib import Path
 from datetime import datetime, timedelta
 import webbrowser
-import requests
-from bs4 import BeautifulSoup
-import re
 from threading import Thread
+
+# Import enhanced scraper
+try:
+    from enhanced_scraper import scrape_website, detect_signals, EnhancedWebScraper
+    ENHANCED_SCRAPER_AVAILABLE = True
+    print("✓ Enhanced multi-page scraper loaded")
+except ImportError:
+    # Fallback to basic scraper if enhanced_scraper.py not found
+    import requests
+    from bs4 import BeautifulSoup
+    import re
+    ENHANCED_SCRAPER_AVAILABLE = False
+    print("⚠ Using basic scraper (enhanced_scraper.py not found)")
+
+    def scrape_website(url):
+        """Basic fallback scraper"""
+        emails, phones = [], []
+        try:
+            if not url.startswith('http'):
+                url = 'https://' + url
+            r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(r.text, 'html.parser')
+            text = soup.get_text()
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            emails = list(set(re.findall(email_pattern, text)))
+            phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+            phones = list(set(re.findall(phone_pattern, text)))
+        except Exception as e:
+            print(f"Scrape error: {e}")
+        return {'emails': emails, 'phones': phones}
+
+    def detect_signals(url):
+        """Basic fallback signal detector"""
+        signals, score = [], 0
+        keywords = {'rfp': 50, 'tender': 40, 'expansion': 30, 'hiring': 25, 'project': 20}
+        try:
+            if not url.startswith('http'):
+                url = 'https://' + url
+            r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
+            text = r.text.lower()
+            for keyword, points in keywords.items():
+                if keyword in text:
+                    signals.append({'keyword': keyword, 'score': points})
+                    score += points
+        except Exception as e:
+            print(f"Signal detection error: {e}")
+        return signals, min(score, 100)
 
 # Create data directory
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # ============================================================================
-# BACKEND FUNCTIONS (from original app.py)
+# BACKEND FUNCTIONS
 # ============================================================================
 
 def load_json(path):
@@ -37,55 +82,6 @@ def save_json(path, data):
     """Save data to JSON file"""
     with open(path, 'w') as f:
         json.dump(data, f, indent=2)
-
-def scrape_website(url):
-    """Scrape website for emails and phone numbers"""
-    emails, phones = [], []
-    try:
-        if not url.startswith('http'):
-            url = 'https://' + url
-        r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-        soup = BeautifulSoup(r.text, 'html.parser')
-        text = soup.get_text()
-
-        # Find emails
-        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        emails = list(set(re.findall(email_pattern, text)))
-
-        # Find phone numbers
-        phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
-        phones = list(set(re.findall(phone_pattern, text)))
-
-    except Exception as e:
-        print(f"Scrape error: {e}")
-
-    return {'emails': emails, 'phones': phones}
-
-def detect_signals(url):
-    """Detect buying signals from website"""
-    signals = []
-    score = 0
-    keywords = {
-        'rfp': 50, 'request for proposal': 50, 'tender': 40, 'bidding': 40,
-        'expansion': 30, 'hiring': 25, 'new equipment': 30, 'project': 20,
-        'maintenance': 15, 'seeking': 20, 'looking for': 20
-    }
-
-    try:
-        if not url.startswith('http'):
-            url = 'https://' + url
-        r = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-        text = r.text.lower()
-
-        for keyword, points in keywords.items():
-            if keyword in text:
-                signals.append({'keyword': keyword, 'score': points})
-                score += points
-
-    except Exception as e:
-        print(f"Signal detection error: {e}")
-
-    return signals, min(score, 100)
 
 
 # ============================================================================
