@@ -1,0 +1,272 @@
+========================================
+HOW INTELLIGENCE DATA GETS STORED
+========================================
+
+This document explains exactly where all the intelligence data goes and how to view it.
+
+========================================
+CURRENT STATE (PROBLEM)
+========================================
+
+Right now, the desktop app is NOT fully integrated with the new intelligence modules.
+
+When you click "Scrape Website" or "Detect Signals":
+  ❌ Uses BASIC scraper only (single page)
+  ❌ Only stores: emails, phones, basic signals
+  ❌ Does NOT check news, permits, LinkedIn, or email enrichment
+  ❌ Data is NOT comprehensive
+
+========================================
+WHAT NEEDS TO HAPPEN (SOLUTION)
+========================================
+
+The app needs to be updated to:
+
+1. Use UnifiedSignalScoring when you click "Enhanced Scrape"
+2. Store ALL intelligence data in the lead's JSON record
+3. Show you a "View Intelligence" button to see all details
+4. Display news articles, permits, LinkedIn profiles, etc.
+
+========================================
+DATA STORAGE STRUCTURE
+========================================
+
+After enhancement, each lead in leads.json will contain:
+
+{
+  "id": "lead_12345",
+  "company_name": "CMC Manufacturing",
+  "website": "https://cmcmanufacturing.com",
+  "general_email": "info@cmcmanufacturing.com",
+  "signal_score": 85,  ← TOTAL SCORE (0-100)
+  "priority": "HIGH",   ← HOT, WARM, or COLD
+
+  "intelligence": {     ← ALL ENRICHMENT DATA STORED HERE
+    "last_updated": "2025-01-18T...",
+
+    "sources": {
+      "website": {
+        "score": 60,
+        "pages_scraped": 10,
+        "emails_found": 2,
+        "phones_found": 1,
+        "signals": [
+          {"keyword": "expansion", "score": 30},
+          {"keyword": "project", "score": 20}
+        ]
+      },
+
+      "news": {
+        "score": 40,
+        "articles_found": 3,
+        "signals": [
+          {
+            "keyword": "contract award",
+            "score": 40,
+            "article_title": "CMC wins $2M contract",
+            "article_link": "https://...",
+            "context": "CMC Manufacturing awarded..."
+          }
+        ]
+      },
+
+      "permits": {
+        "score": 35,
+        "permits_found": 1,
+        "signals": [
+          {
+            "permit_number": "BP2024-12345",
+            "permit_type": "New Building",
+            "description": "50,000 sq ft facility",
+            "address": "123 Industrial Way",
+            "issued_date": "2024-12-15",
+            "estimated_cost": "5000000",
+            "score": 35
+          }
+        ]
+      },
+
+      "linkedin": {
+        "score": 10,
+        "company_page": "https://linkedin.com/company/cmc-manufacturing",
+        "employees_found": 8,
+        "signals": [
+          {
+            "type": "medium_company",
+            "description": "Found 8 employees on LinkedIn",
+            "score": 10
+          }
+        ]
+      },
+
+      "email_enrichment": {
+        "score": 15,
+        "signals": [
+          {
+            "type": "medium_company",
+            "description": "Company has 50 employees",
+            "score": 10
+          }
+        ],
+        "clearbit_data": {
+          "company_name": "CMC Manufacturing",
+          "employees": 50,
+          "industry": "Manufacturing",
+          "estimated_revenue": "$10M-$50M"
+        },
+        "hunter_data": {
+          "emails_found": 5,
+          "email_pattern": "{first}.{last}",
+          "email_list": [
+            {
+              "email": "john.smith@cmcmanufacturing.com",
+              "position": "Operations Manager"
+            }
+          ]
+        }
+      }
+    },
+
+    "all_signals": [
+      {"source": "website", "type": "expansion", "score": 30},
+      {"source": "news", "type": "contract award", "score": 40},
+      {"source": "permits", "type": "new building", "score": 35},
+      {"source": "linkedin", "type": "medium_company", "score": 10},
+      {"source": "email_enrichment", "type": "active_domain", "score": 5}
+    ]
+  },
+
+  "all_emails": [
+    "info@cmcmanufacturing.com",
+    "sales@cmcmanufacturing.com"
+  ],
+
+  "all_phones": [
+    "587-956-7218"
+  ]
+}
+
+========================================
+HOW TO VIEW THE DATA
+========================================
+
+OPTION 1: In the Desktop App (Recommended)
+
+After integration, you'll see:
+
+1. Edit a lead → Click "Enhanced Scrape"
+   • Runs all 5 intelligence sources
+   • Stores everything in the lead
+   • Updates signal score
+
+2. Click "View Intelligence" button
+   • Opens tabbed viewer
+   • Shows: Overview, News, Permits, LinkedIn, etc.
+   • Easy to read format
+
+OPTION 2: Directly in JSON File
+
+Open: LeadGENApp/data/leads.json
+
+Find your lead and look at the "intelligence" section.
+All data is stored there in JSON format.
+
+OPTION 3: Command Line (Testing)
+
+Run unified scoring directly:
+
+  python unified_signal_scoring.py "Company Name" "website" "email"
+
+This shows all results in the terminal.
+
+========================================
+WHAT EACH BUTTON DOES
+========================================
+
+After integration, the edit lead dialog will have:
+
+[💾 Save]
+  • Saves changes to lead
+  • Does NOT run enrichment
+
+[🔍 Basic Scrape]
+  • Quick scrape (2-3 seconds)
+  • Only checks website for emails/phones
+  • Single page only
+  • Use when you just need contact info fast
+
+[🎯 Enhanced Scrape] ← USE THIS FOR FULL INTELLIGENCE
+  • Complete analysis (20-35 seconds)
+  • Checks: Website (10 pages), News, Permits, LinkedIn, Email
+  • Stores ALL data in lead.intelligence
+  • Updates signal score with comprehensive data
+  • Shows summary popup with results
+
+[📊 View Intelligence]
+  • Opens intelligence viewer window
+  • Tabbed interface showing all collected data
+  • News articles, permits, LinkedIn, etc.
+  • Only works if you've run Enhanced Scrape first
+
+[❌ Cancel]
+  • Closes dialog without saving
+
+========================================
+INTEGRATION STATUS
+========================================
+
+✅ COMPLETED:
+  • enhanced_scraper.py (multi-page website scraping)
+  • news_monitor.py (Google News search)
+  • building_permits.py (Calgary permits)
+  • linkedin_discovery.py (LinkedIn auto-find)
+  • email_enrichment.py (Hunter.io + Clearbit)
+  • unified_signal_scoring.py (combines all sources)
+
+⚠️ NEEDS INTEGRATION:
+  • desktop_app.py needs to be updated to USE these modules
+  • Need to add "Enhanced Scrape" button
+  • Need to add "View Intelligence" viewer
+  • Need to store data in lead.intelligence
+
+========================================
+NEXT STEPS
+========================================
+
+I can provide you with TWO options:
+
+OPTION A: PATCH FILE
+  • I give you specific code changes to make
+  • You manually update desktop_app.py
+  • More work but you understand every change
+
+OPTION B: COMPLETE UPDATED FILE
+  • I give you a fully integrated desktop_app.py
+  • Just replace your current file
+  • Faster but less transparent
+
+Which would you prefer?
+
+========================================
+WHY THIS MATTERS
+========================================
+
+With full integration:
+
+BEFORE:
+  • Signal score: 30 (based on 1 keyword)
+  • No context
+  • Can't see why it scored that way
+
+AFTER:
+  • Signal score: 85 (comprehensive analysis)
+  • Click "View Intelligence" →
+    • See 3 news articles about expansion
+    • See building permit for new facility
+    • See 8 LinkedIn employees (growing company)
+    • See company size: 50 employees
+  • Full context for your outreach!
+
+You'll know EXACTLY why a lead is hot and what to mention in your pitch!
+
+========================================
