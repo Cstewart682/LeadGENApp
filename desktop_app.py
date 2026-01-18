@@ -63,6 +63,15 @@ except ImportError:
             print(f"Signal detection error: {e}")
         return signals, min(score, 100)
 
+# Import unified signal scoring
+try:
+    from unified_signal_scoring import UnifiedSignalScoring
+    UNIFIED_SCORING_AVAILABLE = True
+    print("✓ Unified signal scoring loaded")
+except ImportError:
+    UNIFIED_SCORING_AVAILABLE = False
+    print("⚠ Unified signal scoring not available")
+
 # Create data directory
 DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -642,8 +651,129 @@ class LeadGeneratorApp:
         messagebox.showinfo("Success", f"Added: {company}")
 
     def add_and_scrape(self):
-        """Add lead and scrape website"""
-        self.add_lead(scrape=True)
+        """Add lead and scrape website with enhanced intelligence"""
+        # First add the lead without scraping
+        company = self.add_vars['company'].get().strip()
+        if not company:
+            messagebox.showerror("Error", "Company name is required")
+            return
+
+        # Create lead
+        lead_id = f"lead_{int(time.time() * 1000)}"
+        lead = {
+            'id': lead_id,
+            'company_name': company,
+            'website': self.add_vars['website'].get().strip(),
+            'industry': self.add_vars['industry'].get(),
+            'source': self.add_vars['source'].get().strip(),
+            'general_email': self.add_vars['email'].get().strip(),
+            'general_phone': self.add_vars['phone'].get().strip(),
+            'contact_name': self.add_vars['contact_name'].get().strip(),
+            'contact_title': self.add_vars['contact_title'].get().strip(),
+            'notes': self.add_notes.get(1.0, tk.END).strip(),
+            'buying_signals': [],
+            'signal_score': 0,
+            'status': 'New',
+            'outreach_status': 'not_started',
+            'next_followup_date': None,
+            'created_date': datetime.now().isoformat(),
+            'intelligence': None
+        }
+
+        # Enhanced scraping if website provided
+        if lead['website'] and UNIFIED_SCORING_AVAILABLE:
+            self.root.config(cursor="wait")
+            self.root.update()
+
+            try:
+                # Use unified scoring
+                scorer = UnifiedSignalScoring(hunter_api_key=None)  # TODO: Get from settings
+                result = scorer.calculate_unified_score(
+                    company_name=lead['company_name'],
+                    website=lead['website'],
+                    email=lead['general_email'] if lead['general_email'] else None,
+                    check_news=True,
+                    check_permits=True,
+                    check_linkedin=True,
+                    check_email_enrichment=bool(lead['general_email'])
+                )
+
+                # Store comprehensive data
+                lead['signal_score'] = result['total_score']
+                lead['priority'] = result.get('priority', 'LOW')
+                lead['intelligence'] = {
+                    'last_updated': result['analysis_date'],
+                    'sources': result['sources'],
+                    'all_signals': result['all_signals']
+                }
+
+                # Extract emails/phones from website scraping
+                if 'website' in result['sources']:
+                    ws = result['sources']['website']
+                    # Run quick scrape to get actual contacts
+                    from enhanced_scraper import scrape_website as enhanced_scrape
+                    scrape_result = enhanced_scrape(lead['website'])
+
+                    if scrape_result['emails'] and not lead['general_email']:
+                        lead['general_email'] = scrape_result['emails'][0]
+                    if scrape_result['phones'] and not lead['general_phone']:
+                        lead['general_phone'] = scrape_result['phones'][0]
+
+                    lead['all_emails'] = scrape_result['emails']
+                    lead['all_phones'] = scrape_result['phones']
+
+                # Convert signals to old format for compatibility
+                if result['all_signals']:
+                    lead['buying_signals'] = []
+                    for signal in result['all_signals']:
+                        lead['buying_signals'].append({
+                            'keyword': signal['type'],
+                            'score': signal['score'],
+                            'source': signal['source']
+                        })
+
+            except Exception as e:
+                print(f"Enhanced scraping error: {e}")
+                # Fallback to basic scraping
+                result = scrape_website(lead['website'])
+                if result['emails']:
+                    lead['general_email'] = result['emails'][0]
+                if result['phones']:
+                    lead['general_phone'] = result['phones'][0]
+
+                signals, score = detect_signals(lead['website'])
+                lead['buying_signals'] = signals
+                lead['signal_score'] = score
+
+            self.root.config(cursor="")
+
+        elif lead['website']:
+            # Basic scraping fallback
+            self.root.config(cursor="wait")
+            self.root.update()
+
+            result = scrape_website(lead['website'])
+            if result['emails']:
+                lead['general_email'] = result['emails'][0]
+            if result['phones']:
+                lead['general_phone'] = result['phones'][0]
+
+            signals, score = detect_signals(lead['website'])
+            lead['buying_signals'] = signals
+            lead['signal_score'] = score
+
+            self.root.config(cursor="")
+
+        # Save
+        self.leads[lead_id] = lead
+        save_json(DATA_DIR / "leads.json", self.leads)
+
+        # Update UI
+        self.refresh_leads()
+        self.update_stats()
+        self.clear_add_form()
+
+        messagebox.showinfo("Success", f"Added: {company}\nSignal Score: {lead['signal_score']}/100")
 
     def clear_add_form(self):
         """Clear the add form"""
@@ -772,11 +902,121 @@ class LeadGeneratorApp:
             dialog.destroy()
             self.edit_lead()  # Reopen to show signals
 
+        def enhanced_scrape():
+            """Enhanced scraping with unified intelligence gathering"""
+            if not lead.get('website'):
+                messagebox.showwarning("Warning", "No website entered")
+                return
+
+            if not UNIFIED_SCORING_AVAILABLE:
+                messagebox.showwarning("Not Available",
+                    "Unified signal scoring not available.\n\n" +
+                    "Make sure these files are in your LeadGENApp folder:\n" +
+                    "• unified_signal_scoring.py\n" +
+                    "• enhanced_scraper.py\n" +
+                    "• news_monitor.py\n" +
+                    "• building_permits.py\n" +
+                    "• linkedin_discovery.py\n" +
+                    "• email_enrichment.py\n\n" +
+                    "Using basic scraping instead...")
+                detect_now()
+                return
+
+            dialog.config(cursor="wait")
+            dialog.update()
+
+            try:
+                # Get email from form if entered
+                email = edit_vars.get('general_email', tk.StringVar()).get()
+                if not email:
+                    email = lead.get('general_email')
+
+                # Use unified scoring
+                scorer = UnifiedSignalScoring(hunter_api_key=None)  # TODO: Add to settings
+                result = scorer.calculate_unified_score(
+                    company_name=lead['company_name'],
+                    website=lead['website'],
+                    email=email,
+                    check_news=True,
+                    check_permits=True,
+                    check_linkedin=True,
+                    check_email_enrichment=bool(email)
+                )
+
+                # Update lead with comprehensive data
+                lead['signal_score'] = result['total_score']
+                lead['priority'] = result.get('priority', 'LOW')
+                lead['intelligence'] = {
+                    'last_updated': result['analysis_date'],
+                    'sources': result['sources'],
+                    'all_signals': result['all_signals']
+                }
+
+                # Extract emails/phones from website scraping
+                if 'website' in result['sources'] and 'error' not in result['sources']['website']:
+                    # Run quick scrape to get actual contacts
+                    from enhanced_scraper import scrape_website as enhanced_scrape
+                    scrape_result = enhanced_scrape(lead['website'])
+
+                    if scrape_result['emails']:
+                        if not edit_vars['general_email'].get():
+                            edit_vars['general_email'].set(scrape_result['emails'][0])
+                        lead['all_emails'] = scrape_result['emails']
+
+                    if scrape_result['phones']:
+                        if not edit_vars['general_phone'].get():
+                            edit_vars['general_phone'].set(scrape_result['phones'][0])
+                        lead['all_phones'] = scrape_result['phones']
+
+                # Convert signals to old format for compatibility
+                if result['all_signals']:
+                    lead['buying_signals'] = []
+                    for signal in result['all_signals']:
+                        lead['buying_signals'].append({
+                            'keyword': signal['type'],
+                            'score': signal['score'],
+                            'source': signal['source']
+                        })
+
+                dialog.config(cursor="")
+
+                # Save immediately
+                save_json(DATA_DIR / "leads.json", self.leads)
+
+                # Show summary
+                summary = f"✅ Intelligence Gathered!\n\n"
+                summary += f"Total Score: {result['total_score']}/100\n"
+                summary += f"Priority: {result.get('priority_label', 'Unknown')}\n\n"
+
+                summary += "Sources Checked:\n"
+                for source, data in result['sources'].items():
+                    if isinstance(data, dict) and 'score' in data:
+                        summary += f"  • {source.title()}: +{data['score']} points\n"
+
+                summary += f"\nClick 'View Intelligence' to see full details!"
+
+                messagebox.showinfo("Intelligence Complete", summary)
+
+                # Close and reopen to refresh
+                dialog.destroy()
+                self.edit_lead()
+
+            except Exception as e:
+                dialog.config(cursor="")
+                messagebox.showerror("Error", f"Enhanced scraping failed:\n{str(e)}\n\nUsing basic scraping instead...")
+                detect_now()
+
+        def view_intel():
+            """Wrapper to call view_lead_intelligence"""
+            self.view_lead_intelligence(lead, dialog)
+
         tk.Button(btn_frame, text="💾 Save", command=save_changes,
                  bg="#1a3a5c", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🔍 Scrape Website", command=scrape_now,
+        tk.Button(btn_frame, text="🔍 Basic Scrape", command=scrape_now,
                  bg="#28a745", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="📊 Detect Signals", command=detect_now,
+        tk.Button(btn_frame, text="🎯 Enhanced Scrape", command=enhanced_scrape,
+                 bg="#007bff", fg="white", padx=15, pady=5, font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="📊 View Intelligence", command=view_intel,
                  bg="#ffc107", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="❌ Cancel", command=dialog.destroy,
                  bg="#6c757d", fg="white", padx=15, pady=5).pack(side=tk.LEFT, padx=5)
@@ -797,6 +1037,283 @@ class LeadGeneratorApp:
             self.refresh_leads()
             self.update_stats()
             messagebox.showinfo("Success", "Lead deleted")
+
+    def view_lead_intelligence(self, lead, parent_dialog):
+        """Display comprehensive intelligence data for a lead"""
+        if not lead.get('intelligence'):
+            messagebox.showinfo("No Data",
+                "No intelligence data available.\n\n" +
+                "Click 'Enhanced Scrape' to gather comprehensive intelligence from:\n" +
+                "• Website (multiple pages)\n" +
+                "• Google News\n" +
+                "• Building Permits\n" +
+                "• LinkedIn\n" +
+                "• Email Enrichment")
+            return
+
+        # Create intelligence viewer window
+        intel_window = tk.Toplevel(parent_dialog)
+        intel_window.title(f"Intelligence: {lead['company_name']}")
+        intel_window.geometry("900x650")
+
+        # Create notebook for different intelligence sources
+        notebook = ttk.Notebook(intel_window)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        intel_data = lead['intelligence']
+
+        # ========== Overview Tab ==========
+        overview_tab = tk.Frame(notebook)
+        notebook.add(overview_tab, text="📊 Overview")
+
+        overview_text = scrolledtext.ScrolledText(overview_tab, wrap=tk.WORD, font=("Arial", 10))
+        overview_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        overview_content = f"""INTELLIGENCE SUMMARY
+{'='*70}
+
+Company: {lead['company_name']}
+Website: {lead.get('website', 'N/A')}
+Email: {lead.get('general_email', 'N/A')}
+Last Updated: {intel_data.get('last_updated', 'Unknown')[:19]}
+
+SIGNAL SCORE: {lead.get('signal_score', 0)}/100
+Priority: {lead.get('priority', 'Unknown')} Lead
+
+{'='*70}
+SCORE BREAKDOWN:
+{'='*70}
+
+"""
+
+        total_sources = 0
+        for source, data in intel_data.get('sources', {}).items():
+            if isinstance(data, dict) and 'score' in data:
+                total_sources += 1
+                overview_content += f"\n{source.upper()}: +{data['score']} points\n"
+
+                if source == 'website' and 'error' not in data:
+                    overview_content += f"  • Pages Scraped: {data.get('pages_scraped', 0)}\n"
+                    overview_content += f"  • Emails Found: {data.get('emails_found', 0)}\n"
+                    overview_content += f"  • Phones Found: {data.get('phones_found', 0)}\n"
+
+                elif source == 'news' and 'error' not in data:
+                    overview_content += f"  • Articles Found: {data.get('articles_found', 0)}\n"
+
+                elif source == 'permits' and 'error' not in data:
+                    overview_content += f"  • Permits Found: {data.get('permits_found', 0)}\n"
+
+                elif source == 'linkedin' and 'error' not in data:
+                    overview_content += f"  • Company Page: {'Found' if data.get('company_page') else 'Not Found'}\n"
+                    overview_content += f"  • Employees Found: {data.get('employees_found', 0)}\n"
+
+                elif source == 'email_enrichment' and 'error' not in data:
+                    cb = data.get('clearbit_data', {})
+                    if cb and 'error' not in cb:
+                        if cb.get('employees'):
+                            overview_content += f"  • Company Size: {cb['employees']} employees\n"
+                        if cb.get('industry'):
+                            overview_content += f"  • Industry: {cb['industry']}\n"
+                        if cb.get('estimated_revenue'):
+                            overview_content += f"  • Revenue: {cb['estimated_revenue']}\n"
+
+        overview_content += f"\n{'='*70}\n"
+        overview_content += f"ALL SIGNALS DETECTED ({len(intel_data.get('all_signals', []))}):\n"
+        overview_content += f"{'='*70}\n\n"
+
+        # Sort signals by score
+        all_signals = sorted(intel_data.get('all_signals', []),
+                           key=lambda x: x.get('score', 0), reverse=True)
+
+        for signal in all_signals:
+            source_icon = {
+                'website': '🌐',
+                'news': '📰',
+                'permits': '🏗️',
+                'building_permit': '🏗️',
+                'linkedin': '💼',
+                'email_enrichment': '📧'
+            }.get(signal.get('source', ''), '•')
+
+            overview_content += f"{source_icon} [{signal.get('source', 'unknown').upper()}] " \
+                              f"{signal.get('type', 'unknown')} (+{signal.get('score', 0)})\n"
+
+        overview_content += f"\n{'='*70}\n"
+        overview_content += f"SOURCES CHECKED: {total_sources}\n"
+        overview_content += f"RECOMMENDATION: "
+
+        score = lead.get('signal_score', 0)
+        if score >= 70:
+            overview_content += "🔥 HOT LEAD - Contact immediately!\n"
+        elif score >= 40:
+            overview_content += "⚡ WARM LEAD - Good potential, follow up soon.\n"
+        else:
+            overview_content += "❄️ COLD LEAD - Low priority, monitor for changes.\n"
+
+        overview_text.insert(1.0, overview_content)
+        overview_text.config(state=tk.DISABLED)
+
+        # ========== News Tab ==========
+        if 'news' in intel_data.get('sources', {}):
+            news_data = intel_data['sources']['news']
+            if not isinstance(news_data, dict) or 'error' in news_data:
+                pass  # Skip if error
+            elif news_data.get('signals'):
+                news_tab = tk.Frame(notebook)
+                notebook.add(news_tab, text=f"📰 News ({len(news_data['signals'])})")
+
+                news_text = scrolledtext.ScrolledText(news_tab, wrap=tk.WORD, font=("Arial", 10))
+                news_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+                news_content = f"NEWS MONITORING RESULTS\n{'='*70}\n\n"
+                news_content += f"Found {len(news_data['signals'])} buying signals in recent news.\n\n"
+
+                for i, signal in enumerate(news_data['signals'], 1):
+                    news_content += f"{i}. SIGNAL: {signal.get('keyword', 'unknown').upper()} " \
+                                  f"(+{signal.get('score', 0)} points)\n"
+                    news_content += f"   Article: {signal.get('article_title', 'N/A')}\n"
+                    news_content += f"   Link: {signal.get('article_link', 'N/A')}\n"
+                    if signal.get('context'):
+                        news_content += f"   Context: {signal['context']}\n"
+                    news_content += f"\n{'-'*70}\n\n"
+
+                news_text.insert(1.0, news_content)
+                news_text.config(state=tk.DISABLED)
+
+        # ========== Building Permits Tab ==========
+        if 'permits' in intel_data.get('sources', {}):
+            permits_data = intel_data['sources']['permits']
+            if not isinstance(permits_data, dict) or 'error' in permits_data:
+                pass  # Skip if error
+            elif permits_data.get('signals'):
+                permits_tab = tk.Frame(notebook)
+                notebook.add(permits_tab, text=f"🏗️ Permits ({len(permits_data['signals'])})")
+
+                permits_text = scrolledtext.ScrolledText(permits_tab, wrap=tk.WORD, font=("Arial", 10))
+                permits_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+                permits_content = f"BUILDING PERMITS FOUND\n{'='*70}\n\n"
+                permits_content += f"Found {len(permits_data['signals'])} building permits.\n\n"
+
+                for i, signal in enumerate(permits_data['signals'], 1):
+                    permits_content += f"{i}. PERMIT: {signal.get('permit_number', 'Unknown')}\n"
+                    permits_content += f"   Type: {signal.get('permit_type', 'N/A')}\n"
+                    permits_content += f"   Description: {signal.get('description', 'N/A')}\n"
+                    permits_content += f"   Address: {signal.get('address', 'N/A')}\n"
+                    permits_content += f"   Issued: {signal.get('issued_date', 'N/A')}\n"
+                    if signal.get('estimated_cost'):
+                        permits_content += f"   Estimated Cost: ${signal['estimated_cost']:,}\n"
+                    permits_content += f"   Signal Score: +{signal.get('score', 0)} points\n"
+                    permits_content += f"\n{'-'*70}\n\n"
+
+                permits_text.insert(1.0, permits_content)
+                permits_text.config(state=tk.DISABLED)
+
+        # ========== LinkedIn Tab ==========
+        if 'linkedin' in intel_data.get('sources', {}):
+            linkedin_data = intel_data['sources']['linkedin']
+            linkedin_tab = tk.Frame(notebook)
+            notebook.add(linkedin_tab, text="💼 LinkedIn")
+
+            linkedin_text = scrolledtext.ScrolledText(linkedin_tab, wrap=tk.WORD, font=("Arial", 10))
+            linkedin_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            linkedin_content = f"LINKEDIN DISCOVERY\n{'='*70}\n\n"
+
+            if linkedin_data.get('company_page'):
+                linkedin_content += f"Company Page Found:\n{linkedin_data['company_page']}\n\n"
+                linkedin_content += "(Right-click and copy to open in browser)\n\n"
+            else:
+                linkedin_content += "Company Page: Not found\n\n"
+
+            linkedin_content += f"Employees Found on LinkedIn: {linkedin_data.get('employees_found', 0)}\n\n"
+
+            if linkedin_data.get('signals'):
+                linkedin_content += f"Signals Detected:\n"
+                for signal in linkedin_data['signals']:
+                    linkedin_content += f"  • {signal.get('description', 'Unknown')} " \
+                                      f"(+{signal.get('score', 0)} points)\n"
+
+            linkedin_content += f"\n{'='*70}\n"
+            linkedin_content += "NOTE: Employee profiles are discovered but not stored to respect privacy.\n"
+
+            linkedin_text.insert(1.0, linkedin_content)
+            linkedin_text.config(state=tk.DISABLED)
+
+        # ========== Email Enrichment Tab ==========
+        if 'email_enrichment' in intel_data.get('sources', {}):
+            enrich_data = intel_data['sources']['email_enrichment']
+            if not isinstance(enrich_data, dict) or 'error' not in enrich_data:
+                enrich_tab = tk.Frame(notebook)
+                notebook.add(enrich_tab, text="📧 Email Data")
+
+                enrich_text = scrolledtext.ScrolledText(enrich_tab, wrap=tk.WORD, font=("Arial", 10))
+                enrich_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+                enrich_content = f"EMAIL DOMAIN ENRICHMENT\n{'='*70}\n\n"
+
+                # Clearbit data
+                cb = enrich_data.get('clearbit_data', {})
+                if cb and 'error' not in cb:
+                    enrich_content += f"Company Information (Clearbit):\n\n"
+                    if cb.get('company_name'):
+                        enrich_content += f"  Company: {cb['company_name']}\n"
+                    if cb.get('industry'):
+                        enrich_content += f"  Industry: {cb['industry']}\n"
+                    if cb.get('sector'):
+                        enrich_content += f"  Sector: {cb['sector']}\n"
+                    if cb.get('employees'):
+                        enrich_content += f"  Employees: {cb['employees']}\n"
+                    if cb.get('estimated_revenue'):
+                        enrich_content += f"  Estimated Revenue: {cb['estimated_revenue']}\n"
+                    if cb.get('location'):
+                        enrich_content += f"  Location: {cb['location']}\n"
+                    if cb.get('founded_year'):
+                        enrich_content += f"  Founded: {cb['founded_year']}\n"
+
+                    if cb.get('twitter') or cb.get('linkedin') or cb.get('facebook'):
+                        enrich_content += f"\n  Social Media:\n"
+                        if cb.get('twitter'):
+                            enrich_content += f"    Twitter: @{cb['twitter']}\n"
+                        if cb.get('linkedin'):
+                            enrich_content += f"    LinkedIn: {cb['linkedin']}\n"
+                        if cb.get('facebook'):
+                            enrich_content += f"    Facebook: {cb['facebook']}\n"
+
+                # Hunter data
+                hunter = enrich_data.get('hunter_data', {})
+                if hunter and 'error' not in hunter:
+                    enrich_content += f"\n\nEmail Intelligence (Hunter.io):\n\n"
+                    if hunter.get('emails_found'):
+                        enrich_content += f"  Total Emails Found: {hunter['emails_found']}\n"
+                    if hunter.get('email_pattern'):
+                        enrich_content += f"  Email Pattern: {hunter['email_pattern']}\n"
+
+                    if hunter.get('email_list'):
+                        enrich_content += f"\n  Additional Contacts:\n"
+                        for email_info in hunter['email_list'][:10]:
+                            enrich_content += f"\n    • {email_info.get('email', 'N/A')}\n"
+                            if email_info.get('position'):
+                                enrich_content += f"      Position: {email_info['position']}\n"
+                            if email_info.get('first_name') and email_info.get('last_name'):
+                                enrich_content += f"      Name: {email_info['first_name']} {email_info['last_name']}\n"
+
+                # Signals
+                if enrich_data.get('signals'):
+                    enrich_content += f"\n\nSignals Detected:\n"
+                    for signal in enrich_data['signals']:
+                        enrich_content += f"  • {signal.get('description', 'Unknown')} " \
+                                        f"(+{signal.get('score', 0)} points)\n"
+
+                enrich_text.insert(1.0, enrich_content)
+                enrich_text.config(state=tk.DISABLED)
+
+        # Close button
+        btn_frame = tk.Frame(intel_window)
+        btn_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Button(btn_frame, text="Close", command=intel_window.destroy,
+                 bg="#6c757d", fg="white", padx=20, pady=8, font=("Arial", 10)).pack(side=tk.RIGHT)
 
     def import_linkedin(self):
         """Import LinkedIn connections"""
