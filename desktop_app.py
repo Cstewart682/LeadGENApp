@@ -14,6 +14,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 import webbrowser
 from threading import Thread
+from difflib import SequenceMatcher
 
 # Import enhanced scraper
 try:
@@ -242,6 +243,8 @@ class LeadGeneratorApp:
         self.status_filter.pack(side=tk.LEFT, padx=(0, 20))
 
         tk.Button(filter_frame, text="🔄 Refresh", command=self.refresh_leads).pack(side=tk.LEFT)
+        tk.Button(filter_frame, text="✅ Validate All Emails", command=self.bulk_validate_emails,
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=10, pady=4).pack(side=tk.LEFT, padx=(10, 0))
 
         # Leads table
         table_frame = tk.Frame(tab)
@@ -286,6 +289,8 @@ class LeadGeneratorApp:
                  bg=COLORS['primary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🔄 Re-enrich Selected", command=self.re_enrich_lead,
                  bg=COLORS['secondary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="🔍 Find Duplicates", command=self.show_duplicates_dialog,
+                 bg=COLORS['warning'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
                  bg=COLORS['danger'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
 
@@ -577,6 +582,20 @@ class LeadGeneratorApp:
         self.config_vars['tender_locations'] = tk.StringVar(value=", ".join(self.config.get('tender_locations', [])))
         tk.Entry(tender_frame, textvariable=self.config_vars['tender_locations'], width=60).grid(row=1, column=1, pady=5)
 
+        # API Credit Dashboard section
+        credit_frame = tk.LabelFrame(tab, text="API Credit Dashboard", padx=20, pady=15)
+        credit_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # Create text widget to display credits
+        self.credits_display = scrolledtext.ScrolledText(credit_frame, height=8, wrap=tk.WORD, font=("Courier", 9))
+        self.credits_display.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.credits_display.insert(tk.END, "Click 'Check API Credits' to view remaining credits for each service.")
+        self.credits_display.config(state=tk.DISABLED)
+
+        # Refresh credits button
+        tk.Button(credit_frame, text="🔄 Check API Credits", command=self.refresh_api_credits,
+                 bg=COLORS['info'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack()
+
         # Save button
         tk.Button(tab, text="💾 Save Settings", command=self.save_settings,
                  bg=COLORS['success'], fg=COLORS['text_light'], padx=30, pady=10, font=("Arial", 11, "bold")).pack(pady=20)
@@ -612,6 +631,177 @@ class LeadGeneratorApp:
             return None
 
         return MultiSourceEnrichment(api_keys)
+
+    def _calculate_similarity(self, str1, str2):
+        """Calculate similarity ratio between two strings (0.0 to 1.0)"""
+        if not str1 or not str2:
+            return 0.0
+        return SequenceMatcher(None, str1.lower(), str2.lower()).ratio()
+
+    def _extract_domain(self, url):
+        """Extract domain from URL"""
+        if not url:
+            return ""
+        domain = url.replace('https://', '').replace('http://', '').replace('www.', '').split('/')[0]
+        return domain.lower()
+
+    def find_duplicates(self, company_name, website=None, threshold=0.85):
+        """
+        Find potential duplicate leads
+
+        Args:
+            company_name: Company name to check
+            website: Optional website URL
+            threshold: Similarity threshold (0.85 = 85% match)
+
+        Returns:
+            List of potential duplicate lead IDs and their similarity scores
+        """
+        duplicates = []
+
+        for lead_id, lead in self.leads.items():
+            # Check company name similarity
+            name_similarity = self._calculate_similarity(company_name, lead.get('company_name', ''))
+
+            # Check domain similarity if both have websites
+            domain_match = False
+            if website and lead.get('website'):
+                new_domain = self._extract_domain(website)
+                existing_domain = self._extract_domain(lead['website'])
+                if new_domain and existing_domain and new_domain == existing_domain:
+                    domain_match = True
+
+            # Consider it a duplicate if:
+            # 1. Name similarity is above threshold, OR
+            # 2. Domains match exactly
+            if name_similarity >= threshold or domain_match:
+                duplicates.append({
+                    'lead_id': lead_id,
+                    'lead': lead,
+                    'name_similarity': name_similarity,
+                    'domain_match': domain_match,
+                    'confidence': 'HIGH' if domain_match else ('HIGH' if name_similarity >= 0.9 else 'MEDIUM')
+                })
+
+        # Sort by confidence and similarity
+        duplicates.sort(key=lambda x: (x['domain_match'], x['name_similarity']), reverse=True)
+        return duplicates
+
+    def scan_all_duplicates(self):
+        """Scan all leads for duplicates and return groups of duplicates"""
+        duplicate_groups = []
+        checked = set()
+
+        for lead_id, lead in self.leads.items():
+            if lead_id in checked:
+                continue
+
+            # Find duplicates for this lead
+            dupes = self.find_duplicates(
+                lead.get('company_name', ''),
+                lead.get('website'),
+                threshold=0.85
+            )
+
+            # If we found duplicates (excluding self)
+            if len(dupes) > 1:
+                group = {
+                    'primary': {'id': lead_id, 'lead': lead},
+                    'duplicates': [d for d in dupes if d['lead_id'] != lead_id]
+                }
+                duplicate_groups.append(group)
+
+                # Mark all leads in this group as checked
+                checked.add(lead_id)
+                for d in dupes:
+                    checked.add(d['lead_id'])
+
+        return duplicate_groups
+
+    def get_api_credits(self):
+        """Fetch remaining API credits for all configured services"""
+        credits = {}
+
+        # ZeroBounce credits
+        if self.config.get('zerobounce_api_key') and self.config.get('zerobounce_enabled', True):
+            try:
+                from zerobounce_integration import ZeroBounceIntegration
+                zb = ZeroBounceIntegration(self.config['zerobounce_api_key'])
+                result = zb.get_credits()
+                if result.get('success'):
+                    credits['zerobounce'] = {
+                        'available': result.get('credits', 'N/A'),
+                        'status': 'OK'
+                    }
+                else:
+                    credits['zerobounce'] = {
+                        'available': 'Error',
+                        'status': result.get('error', 'Unknown error')
+                    }
+            except Exception as e:
+                credits['zerobounce'] = {
+                    'available': 'Error',
+                    'status': str(e)
+                }
+
+        # Note: Most other APIs don't provide credit checking endpoints
+        # Adding placeholders for consistency
+        if self.config.get('hunter_api_key') and self.config.get('hunter_enabled', True):
+            credits['hunter'] = {
+                'available': 'Check hunter.io dashboard',
+                'status': 'API key configured'
+            }
+
+        if self.config.get('apollo_api_key') and self.config.get('apollo_enabled', True):
+            credits['apollo'] = {
+                'available': 'Check app.apollo.io dashboard',
+                'status': 'API key configured'
+            }
+
+        if self.config.get('pdl_api_key') and self.config.get('pdl_enabled', True):
+            credits['peopledatalabs'] = {
+                'available': 'Check peopledatalabs.com dashboard',
+                'status': 'API key configured'
+            }
+
+        if self.config.get('google_places_api_key') and self.config.get('google_places_enabled', True):
+            credits['google_places'] = {
+                'available': 'Check console.cloud.google.com',
+                'status': 'API key configured'
+            }
+
+        if self.config.get('proxycurl_api_key') and self.config.get('proxycurl_enabled', True):
+            credits['proxycurl'] = {
+                'available': 'Check nubela.co dashboard',
+                'status': 'API key configured'
+            }
+
+        return credits
+
+    def log_activity(self, lead_id, activity_type, description, details=None):
+        """
+        Log an activity for a lead
+
+        Args:
+            lead_id: ID of the lead
+            activity_type: Type of activity (created, contacted, enriched, note, status_change, etc.)
+            description: Human-readable description
+            details: Optional additional details dictionary
+        """
+        if lead_id not in self.leads:
+            return
+
+        if 'activity_log' not in self.leads[lead_id]:
+            self.leads[lead_id]['activity_log'] = []
+
+        activity = {
+            'timestamp': datetime.now().isoformat(),
+            'type': activity_type,
+            'description': description,
+            'details': details or {}
+        }
+
+        self.leads[lead_id]['activity_log'].append(activity)
 
     def update_stats(self):
         """Update statistics bar"""
@@ -786,6 +976,29 @@ class LeadGeneratorApp:
             messagebox.showerror("Error", "Company name is required")
             return
 
+        # Check for duplicates
+        website = self.add_vars['website'].get().strip()
+        duplicates = self.find_duplicates(company, website, threshold=0.85)
+
+        if duplicates:
+            # Show duplicate warning dialog
+            dupe = duplicates[0]  # Get best match
+            confidence = dupe['confidence']
+            existing_lead = dupe['lead']
+
+            message = f"⚠️ Potential Duplicate Detected!\n\n"
+            message += f"Match Confidence: {confidence}\n"
+            message += f"Existing Lead: {existing_lead.get('company_name')}\n"
+            if existing_lead.get('website'):
+                message += f"Website: {existing_lead['website']}\n"
+            message += f"\nDo you want to:\n"
+            message += f"• YES - Add anyway (will create duplicate)\n"
+            message += f"• NO - Cancel and edit existing lead"
+
+            if not messagebox.askyesno("Duplicate Found", message):
+                # User chose NO - don't add, just return
+                return
+
         # Create lead
         lead_id = f"lead_{int(time.time() * 1000)}"
         lead = {
@@ -804,7 +1017,13 @@ class LeadGeneratorApp:
             'status': 'New',
             'outreach_status': 'not_started',
             'next_followup_date': None,
-            'created_date': datetime.now().isoformat()
+            'created_date': datetime.now().isoformat(),
+            'activity_log': [{
+                'timestamp': datetime.now().isoformat(),
+                'type': 'created',
+                'description': f'Lead created from {self.add_vars["source"].get() or "manual entry"}',
+                'details': {}
+            }]
         }
 
         # Scrape if requested
@@ -843,6 +1062,29 @@ class LeadGeneratorApp:
             messagebox.showerror("Error", "Company name is required")
             return
 
+        # Check for duplicates
+        website = self.add_vars['website'].get().strip()
+        duplicates = self.find_duplicates(company, website, threshold=0.85)
+
+        if duplicates:
+            # Show duplicate warning dialog
+            dupe = duplicates[0]  # Get best match
+            confidence = dupe['confidence']
+            existing_lead = dupe['lead']
+
+            message = f"⚠️ Potential Duplicate Detected!\n\n"
+            message += f"Match Confidence: {confidence}\n"
+            message += f"Existing Lead: {existing_lead.get('company_name')}\n"
+            if existing_lead.get('website'):
+                message += f"Website: {existing_lead['website']}\n"
+            message += f"\nDo you want to:\n"
+            message += f"• YES - Add anyway (will create duplicate)\n"
+            message += f"• NO - Cancel and edit existing lead"
+
+            if not messagebox.askyesno("Duplicate Found", message):
+                # User chose NO - don't add, just return
+                return
+
         # Create lead
         lead_id = f"lead_{int(time.time() * 1000)}"
         lead = {
@@ -862,7 +1104,13 @@ class LeadGeneratorApp:
             'outreach_status': 'not_started',
             'next_followup_date': None,
             'created_date': datetime.now().isoformat(),
-            'intelligence': None
+            'intelligence': None,
+            'activity_log': [{
+                'timestamp': datetime.now().isoformat(),
+                'type': 'created',
+                'description': f'Lead created with enhanced scraping from {self.add_vars["source"].get() or "manual entry"}',
+                'details': {}
+            }]
         }
 
         # Enhanced scraping if website provided
@@ -1108,14 +1356,87 @@ class LeadGeneratorApp:
                 row=row, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
             row += 1
 
+        # Activity Timeline
+        tk.Label(form, text="Activity Timeline", font=("Arial", 9, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky=tk.W, pady=(10, 5))
+        row += 1
+
+        activity_frame = tk.Frame(form, relief=tk.SUNKEN, borderwidth=1)
+        activity_frame.grid(row=row, column=0, columnspan=2, sticky=tk.EW, pady=5)
+
+        activity_text = scrolledtext.ScrolledText(activity_frame, height=6, wrap=tk.WORD, font=("Arial", 9))
+        activity_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Display activity log
+        if lead.get('activity_log'):
+            for activity in reversed(lead['activity_log']):  # Most recent first
+                timestamp = datetime.fromisoformat(activity['timestamp'].replace('Z', '+00:00'))
+                time_str = timestamp.strftime('%Y-%m-%d %H:%M')
+
+                icon = {
+                    'created': '🆕',
+                    'enriched': '🔍',
+                    'contacted': '📧',
+                    'note': '📝',
+                    'status_change': '📊',
+                    'validated': '✅'
+                }.get(activity['type'], '•')
+
+                activity_text.insert(tk.END, f"{icon} {time_str} - {activity['description']}\n")
+
+            activity_text.config(state=tk.DISABLED)
+        else:
+            activity_text.insert(tk.END, "No activity recorded yet.")
+            activity_text.config(state=tk.DISABLED)
+
+        row += 1
+
+        # Add Note button
+        def add_note_to_lead():
+            note_dialog = tk.Toplevel(dialog)
+            note_dialog.title("Add Note")
+            note_dialog.geometry("400x250")
+
+            tk.Label(note_dialog, text="Add a note to this lead:", font=("Arial", 10, "bold")).pack(pady=10)
+
+            note_input = scrolledtext.ScrolledText(note_dialog, height=8, wrap=tk.WORD)
+            note_input.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+            def save_note():
+                note_content = note_input.get(1.0, tk.END).strip()
+                if note_content:
+                    self.log_activity(lead_id, 'note', f'Note added: {note_content[:50]}...', {'full_note': note_content})
+                    save_json(DATA_DIR / "leads.json", self.leads)
+                    messagebox.showinfo("Success", "Note added!")
+                    note_dialog.destroy()
+                    dialog.destroy()
+                    self.edit_lead()  # Reopen to show new note
+
+            tk.Button(note_dialog, text="💾 Save Note", command=save_note,
+                     bg=COLORS['primary'], fg=COLORS['text_light'], padx=15, pady=5).pack(pady=5)
+
+        tk.Button(form, text="📝 Add Note", command=add_note_to_lead,
+                 bg=COLORS['info'], fg=COLORS['text_light'], padx=10, pady=4).grid(
+            row=row, column=1, pady=5, sticky=tk.E)
+        row += 1
+
         # Buttons
         btn_frame = tk.Frame(form)
         btn_frame.grid(row=row, column=0, columnspan=2, pady=20)
 
         def save_changes():
+            # Check for status change
+            old_status = lead.get('status')
+            new_status = edit_vars['status'].get()
+
             for key, var in edit_vars.items():
                 lead[key] = var.get()
             lead['notes'] = notes_text.get(1.0, tk.END).strip()
+
+            # Log status change activity
+            if old_status != new_status:
+                self.log_activity(lead_id, 'status_change',
+                    f'Status changed from "{old_status}" to "{new_status}"')
 
             save_json(DATA_DIR / "leads.json", self.leads)
             self.refresh_leads()
@@ -1470,6 +1791,19 @@ class LeadGeneratorApp:
                                 'verified': contact.get('verified', False)
                             })
 
+            # Log enrichment activity
+            sources_used = []
+            if lead.get('intelligence'):
+                if lead['intelligence'].get('sources'):
+                    sources_used.extend(lead['intelligence']['sources'].keys())
+                if lead['intelligence'].get('multi_source', {}).get('sources_used'):
+                    sources_used.extend(lead['intelligence']['multi_source']['sources_used'])
+
+            if sources_used:
+                self.log_activity(lead_id, 'enriched',
+                    f'Lead re-enriched using {len(set(sources_used))} data sources',
+                    {'sources': list(set(sources_used)), 'score': lead.get('signal_score', 0)})
+
             # Save
             save_json(DATA_DIR / "leads.json", self.leads)
 
@@ -1478,14 +1812,6 @@ class LeadGeneratorApp:
             self.update_stats()
 
             self.root.config(cursor="")
-
-            # Show success message
-            sources_used = []
-            if lead.get('intelligence'):
-                if lead['intelligence'].get('sources'):
-                    sources_used.extend(lead['intelligence']['sources'].keys())
-                if lead['intelligence'].get('multi_source', {}).get('sources_used'):
-                    sources_used.extend(lead['intelligence']['multi_source']['sources_used'])
 
             summary = f"✅ Re-enrichment Complete!\n\n"
             summary += f"Company: {lead['company_name']}\n"
@@ -1508,6 +1834,266 @@ class LeadGeneratorApp:
             self.root.config(cursor="")
             messagebox.showerror("Error", f"Re-enrichment failed:\n\n{str(e)}")
             print(f"Re-enrichment error: {e}")
+
+    def show_duplicates_dialog(self):
+        """Show dialog with all duplicate leads found"""
+        # Scan for duplicates
+        self.root.config(cursor="wait")
+        self.root.update()
+
+        duplicate_groups = self.scan_all_duplicates()
+
+        self.root.config(cursor="")
+
+        if not duplicate_groups:
+            messagebox.showinfo("No Duplicates", "No duplicate leads found!\n\nYour database is clean.")
+            return
+
+        # Create duplicates dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Duplicate Leads Found")
+        dialog.geometry("800x600")
+
+        # Header
+        header = tk.Label(dialog, text=f"🔍 Found {len(duplicate_groups)} Duplicate Groups",
+                         font=("Arial", 14, "bold"), fg=COLORS['warning'])
+        header.pack(pady=10)
+
+        # Instructions
+        instructions = tk.Label(dialog,
+            text="Review each group and choose which leads to keep/delete.\n" +
+                 "The first lead in each group is suggested as primary.",
+            wraplength=750)
+        instructions.pack(pady=5)
+
+        # Scrollable frame for duplicates
+        canvas = tk.Canvas(dialog)
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Display duplicate groups
+        for i, group in enumerate(duplicate_groups):
+            primary = group['primary']['lead']
+            duplicates = group['duplicates']
+
+            # Group frame
+            group_frame = tk.LabelFrame(scrollable_frame,
+                text=f"Group {i+1}: {primary.get('company_name')} ({len(duplicates) + 1} matches)",
+                padx=10, pady=10, font=("Arial", 10, "bold"))
+            group_frame.pack(fill=tk.X, padx=10, pady=5)
+
+            # Primary lead
+            primary_frame = tk.Frame(group_frame, relief=tk.RAISED, borderwidth=1, bg=COLORS['primary_light'])
+            primary_frame.pack(fill=tk.X, pady=2)
+
+            tk.Label(primary_frame, text="PRIMARY (Keep this one):",
+                    font=("Arial", 9, "bold"), bg=COLORS['primary_light']).pack(anchor=tk.W, padx=5, pady=2)
+            tk.Label(primary_frame, text=f"  Company: {primary.get('company_name')}",
+                    bg=COLORS['primary_light']).pack(anchor=tk.W, padx=5)
+            if primary.get('website'):
+                tk.Label(primary_frame, text=f"  Website: {primary.get('website')}",
+                        bg=COLORS['primary_light']).pack(anchor=tk.W, padx=5)
+            tk.Label(primary_frame, text=f"  Score: {primary.get('signal_score', 0)} | Status: {primary.get('status', 'New')}",
+                    bg=COLORS['primary_light']).pack(anchor=tk.W, padx=5)
+
+            # Duplicate leads
+            for d in duplicates:
+                dupe_lead = d['lead']
+                dupe_id = d['lead_id']
+                confidence = d['confidence']
+
+                dupe_frame = tk.Frame(group_frame, relief=tk.SUNKEN, borderwidth=1)
+                dupe_frame.pack(fill=tk.X, pady=2)
+
+                info_label = tk.Label(dupe_frame, text=f"DUPLICATE ({confidence} confidence):",
+                                     font=("Arial", 9, "bold"), fg=COLORS['danger'])
+                info_label.pack(anchor=tk.W, padx=5, pady=2)
+
+                tk.Label(dupe_frame, text=f"  Company: {dupe_lead.get('company_name')}").pack(anchor=tk.W, padx=5)
+                if dupe_lead.get('website'):
+                    tk.Label(dupe_frame, text=f"  Website: {dupe_lead.get('website')}").pack(anchor=tk.W, padx=5)
+                tk.Label(dupe_frame, text=f"  Score: {dupe_lead.get('signal_score', 0)} | Status: {dupe_lead.get('status', 'New')}").pack(anchor=tk.W, padx=5)
+
+                # Delete button for duplicate
+                tk.Button(dupe_frame, text="🗑️ Delete This Duplicate",
+                         command=lambda lid=dupe_id, dlg=dialog: self.delete_duplicate(lid, dlg),
+                         bg=COLORS['danger'], fg=COLORS['text_light'], padx=10, pady=4).pack(anchor=tk.E, padx=5, pady=5)
+
+        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+        scrollbar.pack(side="right", fill="y")
+
+        # Close button
+        tk.Button(dialog, text="Close", command=dialog.destroy,
+                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=20, pady=8).pack(pady=10)
+
+    def delete_duplicate(self, lead_id, dialog):
+        """Delete a duplicate lead and refresh the duplicates dialog"""
+        if lead_id in self.leads:
+            lead = self.leads[lead_id]
+            if messagebox.askyesno("Confirm Delete", f"Delete duplicate: {lead['company_name']}?"):
+                del self.leads[lead_id]
+                save_json(DATA_DIR / "leads.json", self.leads)
+                self.refresh_leads()
+                self.update_stats()
+                messagebox.showinfo("Success", "Duplicate deleted!")
+
+                # Close and reopen dialog to refresh
+                dialog.destroy()
+                self.show_duplicates_dialog()
+
+    def bulk_validate_emails(self):
+        """Validate all emails in database using ZeroBounce"""
+        # Check if ZeroBounce is configured
+        if not self.config.get('zerobounce_api_key') or not self.config.get('zerobounce_enabled', True):
+            messagebox.showwarning("ZeroBounce Not Configured",
+                "Please configure your ZeroBounce API key in Settings\n" +
+                "and make sure it's enabled before validating emails.")
+            return
+
+        # Collect all emails
+        all_emails = set()
+        email_to_leads = {}  # Map email to lead IDs
+
+        for lead_id, lead in self.leads.items():
+            # Collect general email
+            if lead.get('general_email'):
+                email = lead['general_email'].strip().lower()
+                all_emails.add(email)
+                if email not in email_to_leads:
+                    email_to_leads[email] = []
+                email_to_leads[email].append(lead_id)
+
+            # Collect all_emails
+            if lead.get('all_emails'):
+                for email in lead['all_emails']:
+                    email = email.strip().lower()
+                    all_emails.add(email)
+                    if email not in email_to_leads:
+                        email_to_leads[email] = []
+                    email_to_leads[email].append(lead_id)
+
+        if not all_emails:
+            messagebox.showinfo("No Emails", "No emails found in your leads database.")
+            return
+
+        # Confirm action
+        if not messagebox.askyesno("Confirm Bulk Validation",
+            f"Validate {len(all_emails)} unique emails?\n\n" +
+            f"This will use {len(all_emails)} ZeroBounce credits.\n\n" +
+            "Valid emails will be marked with ✓\n" +
+            "Invalid emails will be flagged.\n\n" +
+            "Continue?"):
+            return
+
+        # Create progress dialog
+        progress_dialog = tk.Toplevel(self.root)
+        progress_dialog.title("Validating Emails...")
+        progress_dialog.geometry("500x300")
+        progress_dialog.transient(self.root)
+
+        tk.Label(progress_dialog, text="Email Validation in Progress",
+                font=("Arial", 12, "bold")).pack(pady=10)
+
+        progress_text = scrolledtext.ScrolledText(progress_dialog, height=10, wrap=tk.WORD)
+        progress_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        progress_label = tk.Label(progress_dialog, text="Starting validation...")
+        progress_label.pack(pady=5)
+
+        # Perform validation in a thread to keep UI responsive
+        def validate_thread():
+            try:
+                from zerobounce_integration import ZeroBounceIntegration
+                zb = ZeroBounceIntegration(self.config['zerobounce_api_key'])
+
+                email_list = list(all_emails)
+                valid_count = 0
+                invalid_count = 0
+                error_count = 0
+
+                for i, email in enumerate(email_list):
+                    progress_label.config(text=f"Validating {i+1}/{len(email_list)}...")
+                    progress_text.insert(tk.END, f"Checking {email}... ")
+                    progress_text.see(tk.END)
+                    progress_dialog.update()
+
+                    result = zb.validate_email(email)
+
+                    if result.get('success'):
+                        status = result.get('status', 'unknown')
+                        if status == 'valid':
+                            progress_text.insert(tk.END, "✓ VALID\n", 'valid')
+                            valid_count += 1
+
+                            # Update leads with validation status
+                            for lead_id in email_to_leads.get(email, []):
+                                if 'email_validation' not in self.leads[lead_id]:
+                                    self.leads[lead_id]['email_validation'] = {}
+                                self.leads[lead_id]['email_validation'][email] = {
+                                    'status': 'valid',
+                                    'validated_at': datetime.now().isoformat()
+                                }
+                        else:
+                            progress_text.insert(tk.END, f"✗ {status.upper()}\n", 'invalid')
+                            invalid_count += 1
+
+                            # Update leads with validation status
+                            for lead_id in email_to_leads.get(email, []):
+                                if 'email_validation' not in self.leads[lead_id]:
+                                    self.leads[lead_id]['email_validation'] = {}
+                                self.leads[lead_id]['email_validation'][email] = {
+                                    'status': status,
+                                    'validated_at': datetime.now().isoformat()
+                                }
+                    else:
+                        progress_text.insert(tk.END, f"ERROR: {result.get('error', 'Unknown')}\n", 'error')
+                        error_count += 1
+
+                    progress_text.see(tk.END)
+
+                    # Small delay to avoid rate limiting
+                    time.sleep(0.5)
+
+                # Save updated leads
+                save_json(DATA_DIR / "leads.json", self.leads)
+
+                # Summary
+                progress_text.insert(tk.END, "\n" + "=" * 50 + "\n")
+                progress_text.insert(tk.END, f"VALIDATION COMPLETE\n", 'header')
+                progress_text.insert(tk.END, f"Total Emails: {len(email_list)}\n")
+                progress_text.insert(tk.END, f"✓ Valid: {valid_count}\n", 'valid')
+                progress_text.insert(tk.END, f"✗ Invalid: {invalid_count}\n", 'invalid')
+                if error_count > 0:
+                    progress_text.insert(tk.END, f"⚠ Errors: {error_count}\n", 'error')
+
+                progress_label.config(text="Validation Complete!")
+
+                # Configure text tags
+                progress_text.tag_config('valid', foreground='green', font=('Arial', 9, 'bold'))
+                progress_text.tag_config('invalid', foreground='red')
+                progress_text.tag_config('error', foreground='orange')
+                progress_text.tag_config('header', font=('Arial', 10, 'bold'))
+
+                # Add close button
+                tk.Button(progress_dialog, text="Close", command=progress_dialog.destroy,
+                         bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8).pack(pady=10)
+
+            except Exception as e:
+                progress_text.insert(tk.END, f"\n\nERROR: {str(e)}\n", 'error')
+                progress_label.config(text="Validation Failed!")
+
+        # Start validation thread
+        thread = Thread(target=validate_thread)
+        thread.daemon = True
+        thread.start()
 
     def view_lead_intelligence(self, lead, parent_dialog):
         """Display comprehensive intelligence data for a lead"""
@@ -1979,6 +2565,10 @@ Best regards,
         followup = datetime.now() + timedelta(days=3)
         lead['next_followup_date'] = followup.isoformat()
 
+        # Log activity
+        self.log_activity(self.current_draft_lead_id, 'contacted',
+            f'Email sent, follow-up scheduled for {followup.strftime("%Y-%m-%d")}')
+
         save_json(DATA_DIR / "leads.json", self.leads)
         self.update_outreach_stats()
         self.update_stats()
@@ -1989,6 +2579,54 @@ Best regards,
         """Check for new tenders (placeholder - would integrate with tender_monitoring.py)"""
         messagebox.showinfo("Info", "Tender checking functionality would connect to tender APIs here.\n\n" +
                            "This requires API keys and is a placeholder in the desktop version.")
+
+    def refresh_api_credits(self):
+        """Refresh and display API credits"""
+        self.root.config(cursor="wait")
+        self.root.update()
+
+        try:
+            credits = self.get_api_credits()
+
+            # Update display
+            self.credits_display.config(state=tk.NORMAL)
+            self.credits_display.delete(1.0, tk.END)
+
+            if not credits:
+                self.credits_display.insert(tk.END, "No API keys configured or enabled.\n\n")
+                self.credits_display.insert(tk.END, "Configure API keys above and enable them to see credit information.")
+            else:
+                self.credits_display.insert(tk.END, "API CREDIT SUMMARY\n")
+                self.credits_display.insert(tk.END, "=" * 70 + "\n\n")
+
+                for api_name, info in credits.items():
+                    available = info.get('available', 'N/A')
+                    status = info.get('status', 'Unknown')
+
+                    self.credits_display.insert(tk.END, f"{api_name.upper().replace('_', ' ')}:\n")
+                    self.credits_display.insert(tk.END, f"  Credits: {available}\n")
+                    self.credits_display.insert(tk.END, f"  Status: {status}\n\n")
+
+                self.credits_display.insert(tk.END, "-" * 70 + "\n\n")
+                self.credits_display.insert(tk.END, "NOTE: Most APIs don't provide programmatic credit checking.\n")
+                self.credits_display.insert(tk.END, "Check the respective dashboards for accurate credit counts.\n")
+                self.credits_display.insert(tk.END, "\nFree Tier Limits:\n")
+                self.credits_display.insert(tk.END, "  • Hunter.io: 50 requests/month\n")
+                self.credits_display.insert(tk.END, "  • Apollo.io: 50 credits/month\n")
+                self.credits_display.insert(tk.END, "  • PeopleDataLabs: 1,000 requests/month\n")
+                self.credits_display.insert(tk.END, "  • Google Places: $200 credit/month\n")
+                self.credits_display.insert(tk.END, "  • ZeroBounce: 100 validations/month\n")
+                self.credits_display.insert(tk.END, "  • Proxycurl: Pay-per-use (~$0.02-0.03/profile)\n")
+
+            self.credits_display.config(state=tk.DISABLED)
+
+        except Exception as e:
+            self.credits_display.config(state=tk.NORMAL)
+            self.credits_display.delete(1.0, tk.END)
+            self.credits_display.insert(tk.END, f"Error fetching credits:\n{str(e)}")
+            self.credits_display.config(state=tk.DISABLED)
+
+        self.root.config(cursor="")
 
     def save_settings(self):
         """Save settings"""
