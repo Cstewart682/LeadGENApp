@@ -284,6 +284,8 @@ class LeadGeneratorApp:
 
         tk.Button(btn_frame, text="✏️ Edit Selected", command=self.edit_lead,
                  bg=COLORS['primary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="🔄 Re-enrich Selected", command=self.re_enrich_lead,
+                 bg=COLORS['secondary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
                  bg=COLORS['danger'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
 
@@ -503,6 +505,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['hunter_api_key'], width=50, show="*").grid(row=0, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="hunter.io/users/sign_up (50 free/month)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['hunter_enabled'] = tk.BooleanVar(value=self.config.get('hunter_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['hunter_enabled']).grid(row=0, column=3, sticky=tk.W, padx=(10, 0))
 
         # Apollo.io
         tk.Label(api_frame, text="Apollo.io API Key").grid(row=1, column=0, sticky=tk.W, pady=5)
@@ -510,6 +514,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['apollo_api_key'], width=50, show="*").grid(row=1, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="app.apollo.io (50 free/month)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=1, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['apollo_enabled'] = tk.BooleanVar(value=self.config.get('apollo_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['apollo_enabled']).grid(row=1, column=3, sticky=tk.W, padx=(10, 0))
 
         # PeopleDataLabs
         tk.Label(api_frame, text="PeopleDataLabs API Key").grid(row=2, column=0, sticky=tk.W, pady=5)
@@ -517,6 +523,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['pdl_api_key'], width=50, show="*").grid(row=2, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="peopledatalabs.com (1,000 free/month)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=2, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['pdl_enabled'] = tk.BooleanVar(value=self.config.get('pdl_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['pdl_enabled']).grid(row=2, column=3, sticky=tk.W, padx=(10, 0))
 
         # Google Places
         tk.Label(api_frame, text="Google Places API Key").grid(row=3, column=0, sticky=tk.W, pady=5)
@@ -524,6 +532,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['google_places_api_key'], width=50, show="*").grid(row=3, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="console.cloud.google.com ($200 credit/month)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=3, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['google_places_enabled'] = tk.BooleanVar(value=self.config.get('google_places_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['google_places_enabled']).grid(row=3, column=3, sticky=tk.W, padx=(10, 0))
 
         # ZeroBounce
         tk.Label(api_frame, text="ZeroBounce API Key").grid(row=4, column=0, sticky=tk.W, pady=5)
@@ -531,6 +541,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['zerobounce_api_key'], width=50, show="*").grid(row=4, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="zerobounce.net (100 free/month)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=4, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['zerobounce_enabled'] = tk.BooleanVar(value=self.config.get('zerobounce_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['zerobounce_enabled']).grid(row=4, column=3, sticky=tk.W, padx=(10, 0))
 
         # Proxycurl
         tk.Label(api_frame, text="Proxycurl API Key").grid(row=5, column=0, sticky=tk.W, pady=5)
@@ -538,6 +550,8 @@ class LeadGeneratorApp:
         tk.Entry(api_frame, textvariable=self.config_vars['proxycurl_api_key'], width=50, show="*").grid(row=5, column=1, pady=5, sticky=tk.W)
         tk.Label(api_frame, text="nubela.co/proxycurl ($0.02-0.03 per profile)",
                 font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=5, column=2, sticky=tk.W, padx=(10, 0))
+        self.config_vars['proxycurl_enabled'] = tk.BooleanVar(value=self.config.get('proxycurl_enabled', True))
+        tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['proxycurl_enabled']).grid(row=5, column=3, sticky=tk.W, padx=(10, 0))
 
         # Jobber section
         jobber_frame = tk.LabelFrame(tab, text="Jobber CRM Integration", padx=20, pady=15)
@@ -576,16 +590,23 @@ class LeadGeneratorApp:
         if not MULTI_SOURCE_AVAILABLE:
             return None
 
-        api_keys = {
-            'apollo_api_key': self.config.get('apollo_api_key') or None,
-            'pdl_api_key': self.config.get('pdl_api_key') or None,
-            'google_places_api_key': self.config.get('google_places_api_key') or None,
-            'zerobounce_api_key': self.config.get('zerobounce_api_key') or None,
-            'proxycurl_api_key': self.config.get('proxycurl_api_key') or None
-        }
+        api_keys = {}
 
-        # Remove empty keys
-        api_keys = {k: v for k, v in api_keys.items() if v}
+        # Only include APIs that have both a key AND are enabled
+        if self.config.get('apollo_enabled', True) and self.config.get('apollo_api_key'):
+            api_keys['apollo_api_key'] = self.config['apollo_api_key']
+
+        if self.config.get('pdl_enabled', True) and self.config.get('pdl_api_key'):
+            api_keys['pdl_api_key'] = self.config['pdl_api_key']
+
+        if self.config.get('google_places_enabled', True) and self.config.get('google_places_api_key'):
+            api_keys['google_places_api_key'] = self.config['google_places_api_key']
+
+        if self.config.get('zerobounce_enabled', True) and self.config.get('zerobounce_api_key'):
+            api_keys['zerobounce_api_key'] = self.config['zerobounce_api_key']
+
+        if self.config.get('proxycurl_enabled', True) and self.config.get('proxycurl_api_key'):
+            api_keys['proxycurl_api_key'] = self.config['proxycurl_api_key']
 
         if not api_keys:
             return None
@@ -1276,6 +1297,218 @@ class LeadGeneratorApp:
             self.update_stats()
             messagebox.showinfo("Success", "Lead deleted")
 
+    def re_enrich_lead(self):
+        """Re-enrich selected lead with latest intelligence"""
+        selection = self.leads_tree.selection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a lead to re-enrich")
+            return
+
+        # Get lead_id (filter out child rows)
+        lead_id = selection[0]
+        if '_contact_' in lead_id:
+            # User selected a contact row, extract parent lead_id
+            lead_id = lead_id.split('_contact_')[0]
+
+        if lead_id not in self.leads:
+            messagebox.showerror("Error", "Invalid lead selected")
+            return
+
+        lead = self.leads[lead_id]
+
+        # Check if lead has a website
+        if not lead.get('website'):
+            messagebox.showwarning("Warning",
+                f"{lead['company_name']} has no website.\n\n" +
+                "Please add a website URL first before re-enriching.")
+            return
+
+        # Confirm action
+        if not messagebox.askyesno("Confirm Re-enrich",
+            f"Re-enrich {lead['company_name']}?\n\n" +
+            "This will:\n" +
+            "• Gather latest intelligence from all enabled sources\n" +
+            "• Update signal scores\n" +
+            "• Find new contacts\n\n" +
+            "Note: This may use API credits."):
+            return
+
+        # Start enrichment
+        self.root.config(cursor="wait")
+        self.root.update()
+
+        try:
+            # Run unified scoring if available
+            if UNIFIED_SCORING_AVAILABLE:
+                hunter_key = self.config.get('hunter_api_key', None)
+                if hunter_key == '':
+                    hunter_key = None
+
+                # Only use hunter if enabled
+                if not self.config.get('hunter_enabled', True):
+                    hunter_key = None
+
+                scorer = UnifiedSignalScoring(hunter_api_key=hunter_key)
+                result = scorer.calculate_unified_score(
+                    company_name=lead['company_name'],
+                    website=lead['website'],
+                    email=lead.get('general_email') if lead.get('general_email') else None,
+                    check_news=True,
+                    check_permits=True,
+                    check_linkedin=True,
+                    check_email_enrichment=bool(lead.get('general_email'))
+                )
+
+                # Update lead with comprehensive data
+                lead['signal_score'] = result['total_score']
+                lead['priority'] = result.get('priority', 'LOW')
+                lead['intelligence'] = {
+                    'last_updated': result['analysis_date'],
+                    'sources': result['sources'],
+                    'all_signals': result['all_signals']
+                }
+
+                # Extract emails/phones from website scraping
+                if 'website' in result['sources'] and 'error' not in result['sources']['website']:
+                    from enhanced_scraper import scrape_website as enhanced_scrape
+                    scrape_result = enhanced_scrape(lead['website'])
+
+                    if scrape_result['emails']:
+                        if not lead.get('general_email'):
+                            lead['general_email'] = scrape_result['emails'][0]
+                        lead['all_emails'] = scrape_result['emails']
+
+                    if scrape_result['phones']:
+                        if not lead.get('general_phone'):
+                            lead['general_phone'] = scrape_result['phones'][0]
+                        lead['all_phones'] = scrape_result['phones']
+
+                # Convert signals to old format for compatibility
+                if result['all_signals']:
+                    lead['buying_signals'] = []
+                    for signal in result['all_signals']:
+                        lead['buying_signals'].append({
+                            'keyword': signal['type'],
+                            'score': signal['score'],
+                            'source': signal['source']
+                        })
+
+            # Run multi-source enrichment
+            enricher = self._get_multi_source_enricher()
+            if enricher:
+                # Extract domain from website
+                domain = lead['website'].replace('https://', '').replace('http://', '').split('/')[0]
+
+                # Enrich company data
+                company_data = enricher.enrich_company(
+                    company_name=lead['company_name'],
+                    domain=domain,
+                    location="Calgary, AB"
+                )
+
+                if company_data.get('sources_used'):
+                    # Store multi-source data
+                    if not lead.get('intelligence'):
+                        lead['intelligence'] = {}
+                    lead['intelligence']['multi_source'] = company_data
+
+                    # Extract additional phones
+                    aggregated = company_data.get('aggregated', {})
+                    if aggregated.get('phones'):
+                        if not lead.get('all_phones'):
+                            lead['all_phones'] = []
+                        for phone in aggregated['phones']:
+                            if phone not in lead['all_phones']:
+                                lead['all_phones'].append(phone)
+
+                # Find additional contacts
+                contacts_data = enricher.find_contacts(lead['company_name'], domain, limit=10)
+
+                if contacts_data.get('total_contacts', 0) > 0:
+                    # Store contact data
+                    if not lead.get('intelligence'):
+                        lead['intelligence'] = {}
+                    lead['intelligence']['contacts'] = contacts_data
+
+                    # Add emails to all_emails list
+                    if not lead.get('all_emails'):
+                        lead['all_emails'] = []
+
+                    for contact in contacts_data['all_contacts']:
+                        email = contact.get('email')
+                        if email and email not in lead['all_emails']:
+                            lead['all_emails'].append(email)
+
+                        # Store contact details (replace old ones)
+                        if not lead.get('contact_details'):
+                            lead['contact_details'] = []
+
+                        # Check if contact already exists
+                        existing = False
+                        for i, existing_contact in enumerate(lead['contact_details']):
+                            if existing_contact.get('email') == email:
+                                # Update existing contact
+                                lead['contact_details'][i] = {
+                                    'email': contact.get('email'),
+                                    'name': contact.get('name'),
+                                    'title': contact.get('title'),
+                                    'phone': contact.get('phone'),
+                                    'source': contact.get('source'),
+                                    'verified': contact.get('verified', False)
+                                }
+                                existing = True
+                                break
+
+                        # Add new contact if it doesn't exist
+                        if not existing:
+                            lead['contact_details'].append({
+                                'email': contact.get('email'),
+                                'name': contact.get('name'),
+                                'title': contact.get('title'),
+                                'phone': contact.get('phone'),
+                                'source': contact.get('source'),
+                                'verified': contact.get('verified', False)
+                            })
+
+            # Save
+            save_json(DATA_DIR / "leads.json", self.leads)
+
+            # Update UI
+            self.refresh_leads()
+            self.update_stats()
+
+            self.root.config(cursor="")
+
+            # Show success message
+            sources_used = []
+            if lead.get('intelligence'):
+                if lead['intelligence'].get('sources'):
+                    sources_used.extend(lead['intelligence']['sources'].keys())
+                if lead['intelligence'].get('multi_source', {}).get('sources_used'):
+                    sources_used.extend(lead['intelligence']['multi_source']['sources_used'])
+
+            summary = f"✅ Re-enrichment Complete!\n\n"
+            summary += f"Company: {lead['company_name']}\n"
+            summary += f"Updated Signal Score: {lead.get('signal_score', 0)}/100\n"
+            summary += f"Priority: {lead.get('priority', 'Unknown')}\n\n"
+
+            if sources_used:
+                summary += f"Data Sources Used:\n"
+                for source in set(sources_used):
+                    summary += f"  • {source.title()}\n"
+
+            if lead.get('all_emails'):
+                summary += f"\nTotal Emails Found: {len(lead['all_emails'])}\n"
+            if lead.get('all_phones'):
+                summary += f"Total Phones Found: {len(lead['all_phones'])}\n"
+
+            messagebox.showinfo("Re-enrichment Complete", summary)
+
+        except Exception as e:
+            self.root.config(cursor="")
+            messagebox.showerror("Error", f"Re-enrichment failed:\n\n{str(e)}")
+            print(f"Re-enrichment error: {e}")
+
     def view_lead_intelligence(self, lead, parent_dialog):
         """Display comprehensive intelligence data for a lead"""
         if not lead.get('intelligence'):
@@ -1764,6 +1997,9 @@ Best regards,
                 # Convert comma-separated to list
                 value = [s.strip() for s in var.get().split(',') if s.strip()]
                 self.config[key] = value
+            elif key.endswith('_enabled'):
+                # Save boolean values
+                self.config[key] = var.get()
             else:
                 self.config[key] = var.get()
 
