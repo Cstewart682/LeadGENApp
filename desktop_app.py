@@ -242,6 +242,13 @@ class LeadGeneratorApp:
         self.status_filter.bind('<<ComboboxSelected>>', lambda e: self.refresh_leads())
         self.status_filter.pack(side=tk.LEFT, padx=(0, 20))
 
+        tk.Label(filter_frame, text="Enrichment:").pack(side=tk.LEFT, padx=(0, 5))
+        self.enrichment_filter = ttk.Combobox(filter_frame, width=18,
+                                             values=["All", "Enriched", "Not Enriched", "Needs Update"])
+        self.enrichment_filter.set("All")
+        self.enrichment_filter.bind('<<ComboboxSelected>>', lambda e: self.refresh_leads())
+        self.enrichment_filter.pack(side=tk.LEFT, padx=(0, 20))
+
         tk.Button(filter_frame, text="🔄 Refresh", command=self.refresh_leads).pack(side=tk.LEFT)
         tk.Button(filter_frame, text="✅ Validate All Emails", command=self.bulk_validate_emails,
                  bg=COLORS['success'], fg=COLORS['text_light'], padx=10, pady=4).pack(side=tk.LEFT, padx=(10, 0))
@@ -257,7 +264,7 @@ class LeadGeneratorApp:
         hsb.pack(side=tk.BOTTOM, fill=tk.X)
 
         # Treeview
-        columns = ("Company", "Contacts", "Signal", "Status")
+        columns = ("Company", "Contacts", "Signal", "Enrichment", "Status")
         self.leads_tree = ttk.Treeview(table_frame, columns=columns, show="headings",
                                        yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
@@ -268,12 +275,14 @@ class LeadGeneratorApp:
         self.leads_tree.heading("Company", text="Company")
         self.leads_tree.heading("Contacts", text="Contact Information")
         self.leads_tree.heading("Signal", text="Signal Score")
+        self.leads_tree.heading("Enrichment", text="Enrichment Status")
         self.leads_tree.heading("Status", text="Status")
 
         # Column widths
-        self.leads_tree.column("Company", width=200)
-        self.leads_tree.column("Contacts", width=450)
+        self.leads_tree.column("Company", width=180)
+        self.leads_tree.column("Contacts", width=400)
         self.leads_tree.column("Signal", width=100)
+        self.leads_tree.column("Enrichment", width=140)
         self.leads_tree.column("Status", width=100)
 
         self.leads_tree.pack(fill=tk.BOTH, expand=True)
@@ -289,6 +298,8 @@ class LeadGeneratorApp:
                  bg=COLORS['primary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🔄 Re-enrich Selected", command=self.re_enrich_lead,
                  bg=COLORS['secondary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="🚀 Bulk Enrich Unenriched", command=self.bulk_enrich_unenriched,
+                 bg=COLORS['success'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🔍 Find Duplicates", command=self.show_duplicates_dialog,
                  bg=COLORS['warning'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
@@ -803,6 +814,48 @@ class LeadGeneratorApp:
 
         self.leads[lead_id]['activity_log'].append(activity)
 
+    def get_enrichment_status(self, lead):
+        """
+        Determine enrichment status of a lead
+
+        Returns:
+            tuple: (status_text, status_icon, needs_update)
+            - status_text: "Enriched", "Not Enriched", "Needs Update"
+            - status_icon: emoji icon
+            - needs_update: boolean indicating if data is stale
+        """
+        has_intelligence = lead.get('intelligence') is not None
+        has_multi_source = has_intelligence and lead['intelligence'].get('multi_source') is not None
+
+        # If no intelligence data at all
+        if not has_intelligence:
+            return ("Not Enriched", "❌", False)
+
+        # Check if intelligence is recent (within 30 days)
+        last_updated = lead.get('intelligence', {}).get('last_updated')
+        needs_update = False
+
+        if last_updated:
+            try:
+                updated_date = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                days_old = (datetime.now() - updated_date).days
+                if days_old > 30:
+                    needs_update = True
+            except:
+                pass
+
+        # Has intelligence and multi-source data
+        if has_multi_source:
+            sources_count = len(lead['intelligence'].get('multi_source', {}).get('sources_used', []))
+            if needs_update:
+                return ("Needs Update", "⚠️", True)
+            return (f"✓ Enriched ({sources_count} APIs)", "✅", False)
+
+        # Has basic intelligence only
+        if needs_update:
+            return ("Needs Update", "⚠️", True)
+        return ("✓ Basic", "🔵", False)
+
     def update_stats(self):
         """Update statistics bar"""
         leads_list = list(self.leads.values())
@@ -837,6 +890,7 @@ class LeadGeneratorApp:
         # Get filter values
         search = self.search_var.get().lower()
         status_filter = self.status_filter.get()
+        enrichment_filter = self.enrichment_filter.get()
 
         # Filter and display leads
         for lead_id, lead in self.leads.items():
@@ -846,11 +900,21 @@ class LeadGeneratorApp:
             if status_filter != "All" and lead.get('status') != status_filter:
                 continue
 
+            # Apply enrichment filter
+            enrichment_status, enrichment_icon, needs_update = self.get_enrichment_status(lead)
+            if enrichment_filter == "Enriched" and "Not Enriched" in enrichment_status:
+                continue
+            elif enrichment_filter == "Not Enriched" and "Not Enriched" not in enrichment_status:
+                continue
+            elif enrichment_filter == "Needs Update" and not needs_update:
+                continue
+
             # Insert parent row (company info)
             parent_id = self.leads_tree.insert('', tk.END, iid=lead_id, values=(
                 lead.get('company_name', ''),
                 '',  # Contact info will be in child rows
                 lead.get('signal_score', 0),
+                f"{enrichment_icon} {enrichment_status}",
                 lead.get('status', 'New')
             ))
 
@@ -2092,6 +2156,197 @@ class LeadGeneratorApp:
 
         # Start validation thread
         thread = Thread(target=validate_thread)
+        thread.daemon = True
+        thread.start()
+
+    def bulk_enrich_unenriched(self):
+        """Bulk enrich all unenriched leads"""
+        # Find all unenriched leads
+        unenriched_leads = []
+        needs_update_leads = []
+
+        for lead_id, lead in self.leads.items():
+            if not lead.get('website'):
+                continue  # Skip leads without websites
+
+            status_text, icon, needs_update = self.get_enrichment_status(lead)
+
+            if "Not Enriched" in status_text:
+                unenriched_leads.append((lead_id, lead))
+            elif needs_update:
+                needs_update_leads.append((lead_id, lead))
+
+        total_to_enrich = len(unenriched_leads) + len(needs_update_leads)
+
+        if total_to_enrich == 0:
+            messagebox.showinfo("All Enriched",
+                "All leads with websites are already enriched!\n\n" +
+                "No action needed.")
+            return
+
+        # Show confirmation dialog
+        message = f"Found leads to enrich:\n\n"
+        message += f"• {len(unenriched_leads)} not enriched\n"
+        message += f"• {len(needs_update_leads)} need update (>30 days old)\n"
+        message += f"\nTotal: {total_to_enrich} leads\n\n"
+        message += "This will:\n"
+        message += "• Run unified signal scoring\n"
+        message += "• Gather multi-source intelligence\n"
+        message += "• Find contacts\n"
+        message += "• Use API credits\n\n"
+        message += f"Estimated time: ~{total_to_enrich * 2} seconds\n\n"
+        message += "Continue?"
+
+        if not messagebox.askyesno("Bulk Enrich Confirmation", message):
+            return
+
+        # Create progress dialog
+        progress_dialog = tk.Toplevel(self.root)
+        progress_dialog.title("Bulk Enrichment in Progress...")
+        progress_dialog.geometry("600x400")
+        progress_dialog.transient(self.root)
+
+        tk.Label(progress_dialog, text="Bulk Enrichment Progress",
+                font=("Arial", 12, "bold")).pack(pady=10)
+
+        progress_text = scrolledtext.ScrolledText(progress_dialog, height=15, wrap=tk.WORD)
+        progress_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        progress_label = tk.Label(progress_dialog, text="Starting bulk enrichment...")
+        progress_label.pack(pady=5)
+
+        # Progress bar
+        progress_bar = ttk.Progressbar(progress_dialog, length=500, mode='determinate')
+        progress_bar.pack(pady=10)
+        progress_bar['maximum'] = total_to_enrich
+        progress_bar['value'] = 0
+
+        # Perform enrichment in thread
+        def enrich_thread():
+            try:
+                all_leads = unenriched_leads + needs_update_leads
+                success_count = 0
+                error_count = 0
+
+                for i, (lead_id, lead) in enumerate(all_leads):
+                    progress_label.config(text=f"Enriching {i+1}/{total_to_enrich}: {lead['company_name']}")
+                    progress_text.insert(tk.END, f"\n[{i+1}/{total_to_enrich}] {lead['company_name']}...\n")
+                    progress_text.see(tk.END)
+                    progress_dialog.update()
+
+                    try:
+                        # Run unified scoring
+                        if UNIFIED_SCORING_AVAILABLE:
+                            hunter_key = self.config.get('hunter_api_key') if self.config.get('hunter_enabled', True) else None
+                            if hunter_key == '':
+                                hunter_key = None
+
+                            from unified_signal_scoring import UnifiedSignalScoring
+                            scorer = UnifiedSignalScoring(hunter_api_key=hunter_key)
+                            result = scorer.calculate_unified_score(
+                                company_name=lead['company_name'],
+                                website=lead['website'],
+                                email=lead.get('general_email'),
+                                check_news=True,
+                                check_permits=True,
+                                check_linkedin=True,
+                                check_email_enrichment=bool(lead.get('general_email'))
+                            )
+
+                            # Update lead
+                            lead['signal_score'] = result['total_score']
+                            lead['priority'] = result.get('priority', 'LOW')
+                            lead['intelligence'] = {
+                                'last_updated': result['analysis_date'],
+                                'sources': result['sources'],
+                                'all_signals': result['all_signals']
+                            }
+
+                        # Run multi-source enrichment
+                        enricher = self._get_multi_source_enricher()
+                        if enricher:
+                            domain = lead['website'].replace('https://', '').replace('http://', '').split('/')[0]
+
+                            company_data = enricher.enrich_company(
+                                company_name=lead['company_name'],
+                                domain=domain,
+                                location="Calgary, AB"
+                            )
+
+                            if company_data.get('sources_used'):
+                                if not lead.get('intelligence'):
+                                    lead['intelligence'] = {}
+                                lead['intelligence']['multi_source'] = company_data
+
+                            contacts_data = enricher.find_contacts(lead['company_name'], domain, limit=10)
+
+                            if contacts_data.get('total_contacts', 0) > 0:
+                                if not lead.get('intelligence'):
+                                    lead['intelligence'] = {}
+                                lead['intelligence']['contacts'] = contacts_data
+
+                                if not lead.get('contact_details'):
+                                    lead['contact_details'] = []
+
+                                for contact in contacts_data['all_contacts']:
+                                    lead['contact_details'].append({
+                                        'email': contact.get('email'),
+                                        'name': contact.get('name'),
+                                        'title': contact.get('title'),
+                                        'phone': contact.get('phone'),
+                                        'source': contact.get('source'),
+                                        'verified': contact.get('verified', False)
+                                    })
+
+                        # Log activity
+                        self.log_activity(lead_id, 'enriched',
+                            f'Bulk enriched with score {lead.get("signal_score", 0)}')
+
+                        progress_text.insert(tk.END, f"  ✓ Success (Score: {lead.get('signal_score', 0)})\n", 'success')
+                        success_count += 1
+
+                    except Exception as e:
+                        progress_text.insert(tk.END, f"  ✗ Error: {str(e)}\n", 'error')
+                        error_count += 1
+
+                    progress_bar['value'] = i + 1
+                    progress_dialog.update()
+
+                    # Small delay to avoid rate limiting
+                    time.sleep(1)
+
+                # Save all changes
+                save_json(DATA_DIR / "leads.json", self.leads)
+
+                # Refresh UI
+                self.refresh_leads()
+                self.update_stats()
+
+                # Summary
+                progress_text.insert(tk.END, "\n" + "=" * 60 + "\n")
+                progress_text.insert(tk.END, "BULK ENRICHMENT COMPLETE\n", 'header')
+                progress_text.insert(tk.END, f"Total Processed: {total_to_enrich}\n")
+                progress_text.insert(tk.END, f"✓ Successful: {success_count}\n", 'success')
+                if error_count > 0:
+                    progress_text.insert(tk.END, f"✗ Errors: {error_count}\n", 'error')
+
+                progress_label.config(text="Bulk Enrichment Complete!")
+
+                # Configure tags
+                progress_text.tag_config('success', foreground='green', font=('Arial', 9, 'bold'))
+                progress_text.tag_config('error', foreground='red')
+                progress_text.tag_config('header', font=('Arial', 10, 'bold'))
+
+                # Add close button
+                tk.Button(progress_dialog, text="Close", command=progress_dialog.destroy,
+                         bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8).pack(pady=10)
+
+            except Exception as e:
+                progress_text.insert(tk.END, f"\n\nFATAL ERROR: {str(e)}\n", 'error')
+                progress_label.config(text="Bulk Enrichment Failed!")
+
+        # Start enrichment thread
+        thread = Thread(target=enrich_thread)
         thread.daemon = True
         thread.start()
 
