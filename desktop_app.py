@@ -559,20 +559,31 @@ class LeadGeneratorApp:
             if status_filter != "All" and lead.get('status') != status_filter:
                 continue
 
-            # Format contact information with ALL emails and phones
-            contacts = self._format_all_contacts(lead)
-
-            # Insert into tree
-            self.leads_tree.insert('', tk.END, iid=lead_id, values=(
+            # Insert parent row (company info)
+            parent_id = self.leads_tree.insert('', tk.END, iid=lead_id, values=(
                 lead.get('company_name', ''),
-                contacts,
+                '',  # Contact info will be in child rows
                 lead.get('signal_score', 0),
                 lead.get('status', 'New')
             ))
 
-    def _format_all_contacts(self, lead):
-        """Format all emails and phones for display with identifying info"""
-        parts = []
+            # Get all contacts and insert as child rows
+            contact_rows = self._get_all_contact_rows(lead)
+            for i, contact_info in enumerate(contact_rows):
+                # Insert child row under company
+                self.leads_tree.insert(parent_id, tk.END, iid=f"{lead_id}_contact_{i}",
+                                     values=('', contact_info, '', ''))
+
+    def _get_all_contact_rows(self, lead):
+        """Get list of all contact rows to display (each email/phone as separate row)"""
+        rows = []
+
+        # Add contact name first if available
+        if lead.get('contact_name'):
+            name_part = f"👤 {lead['contact_name']}"
+            if lead.get('contact_title'):
+                name_part += f" ({lead['contact_title']})"
+            rows.append(name_part)
 
         # Get all emails
         all_emails = lead.get('all_emails', [])
@@ -586,14 +597,14 @@ class LeadGeneratorApp:
             if contact_email and contact_email not in all_emails:
                 all_emails.append(contact_email)
 
-        # Display all emails with labels
+        # Add each email as a separate row
         for i, email in enumerate(all_emails):
             if email == general_email or i == 0:
-                parts.append(f"📧 {email} (Primary)")
+                rows.append(f"📧 {email} (Primary)")
             elif email == contact_email:
-                parts.append(f"📧 {email} (Contact)")
+                rows.append(f"📧 {email} (Contact)")
             else:
-                parts.append(f"📧 {email}")
+                rows.append(f"📧 {email}")
 
         # Get all phones
         all_phones = lead.get('all_phones', [])
@@ -604,21 +615,14 @@ class LeadGeneratorApp:
             if general_phone:
                 all_phones.append(general_phone)
 
-        # Display all phones with labels
+        # Add each phone as a separate row
         for i, phone in enumerate(all_phones):
             if phone == general_phone or i == 0:
-                parts.append(f"📞 {phone} (Main)")
+                rows.append(f"📞 {phone} (Main)")
             else:
-                parts.append(f"📞 {phone}")
+                rows.append(f"📞 {phone}")
 
-        # Add contact name if available
-        if lead.get('contact_name'):
-            name_part = f"👤 {lead['contact_name']}"
-            if lead.get('contact_title'):
-                name_part += f" ({lead['contact_title']})"
-            parts.insert(0, name_part)
-
-        return " | ".join(parts) if parts else "-"
+        return rows if rows else ["-"]
 
     def refresh_tenders(self):
         """Refresh tenders display"""
