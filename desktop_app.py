@@ -484,6 +484,18 @@ class LeadGeneratorApp:
             entry.grid(row=row, column=col+1, pady=5, padx=(0, 20))
             self.config_vars[key] = var
 
+        # API Keys section
+        api_frame = tk.LabelFrame(tab, text="API Keys (for Enhanced Intelligence)", padx=20, pady=15)
+        api_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        tk.Label(api_frame, text="Hunter.io API Key").grid(row=0, column=0, sticky=tk.W, pady=5)
+        self.config_vars['hunter_api_key'] = tk.StringVar(value=self.config.get('hunter_api_key', ""))
+        hunter_entry = tk.Entry(api_frame, textvariable=self.config_vars['hunter_api_key'], width=50, show="*")
+        hunter_entry.grid(row=0, column=1, pady=5, sticky=tk.W)
+
+        tk.Label(api_frame, text="Get your free API key at hunter.io/users/sign_up (50 requests/month free)",
+                font=("Arial", 8), fg=COLORS['text_secondary']).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 5))
+
         # Jobber section
         jobber_frame = tk.LabelFrame(tab, text="Jobber CRM Integration", padx=20, pady=15)
         jobber_frame.pack(fill=tk.X, padx=20, pady=10)
@@ -774,8 +786,11 @@ class LeadGeneratorApp:
             self.root.update()
 
             try:
-                # Use unified scoring
-                scorer = UnifiedSignalScoring(hunter_api_key=None)  # TODO: Get from settings
+                # Use unified scoring with Hunter.io API key from settings
+                hunter_key = self.config.get('hunter_api_key', None)
+                if hunter_key == '':
+                    hunter_key = None
+                scorer = UnifiedSignalScoring(hunter_api_key=hunter_key)
                 result = scorer.calculate_unified_score(
                     company_name=lead['company_name'],
                     website=lead['website'],
@@ -1019,8 +1034,11 @@ class LeadGeneratorApp:
                 if not email:
                     email = lead.get('general_email')
 
-                # Use unified scoring
-                scorer = UnifiedSignalScoring(hunter_api_key=None)  # TODO: Add to settings
+                # Use unified scoring with Hunter.io API key from settings
+                hunter_key = self.config.get('hunter_api_key', None)
+                if hunter_key == '':
+                    hunter_key = None
+                scorer = UnifiedSignalScoring(hunter_api_key=hunter_key)
                 result = scorer.calculate_unified_score(
                     company_name=lead['company_name'],
                     website=lead['website'],
