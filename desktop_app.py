@@ -87,36 +87,176 @@ DATA_DIR = Path(__file__).parent / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 # ============================================================================
-# JOBBER-STYLE COLOR SCHEME
+# JOBBER-STYLE COLOR SCHEME - ENHANCED
 # ============================================================================
 COLORS = {
-    # Primary colors (Jobber-inspired)
-    'primary': '#0E73CC',      # Jobber blue
-    'primary_dark': '#0A5494',
-    'primary_light': '#E6F2FF',
-    'secondary': '#00A3A3',    # Teal/cyan
-    'secondary_dark': '#007A7A',
+    # Primary colors (Jobber-inspired - more vibrant)
+    'primary': '#0D6EFD',      # Bright blue
+    'primary_dark': '#0B5ED7',
+    'primary_light': '#CFE2FF',
+    'primary_hover': '#0A58CA',
 
-    # Status colors
-    'success': '#2E7D32',      # Green
-    'warning': '#F57C00',      # Orange
-    'danger': '#D32F2F',       # Red
-    'info': '#0277BD',         # Light blue
+    'secondary': '#06B6D4',    # Bright cyan
+    'secondary_dark': '#0891B2',
+    'secondary_light': '#CFFAFE',
+    'secondary_hover': '#0E7490',
+
+    # Status colors (more vibrant)
+    'success': '#10B981',      # Emerald green
+    'success_dark': '#059669',
+    'success_light': '#D1FAE5',
+
+    'warning': '#F59E0B',      # Amber
+    'warning_dark': '#D97706',
+    'warning_light': '#FEF3C7',
+
+    'danger': '#EF4444',       # Red
+    'danger_dark': '#DC2626',
+    'danger_light': '#FEE2E2',
+
+    'info': '#3B82F6',         # Blue
+    'info_dark': '#2563EB',
+    'info_light': '#DBEAFE',
 
     # Neutral colors
-    'bg_primary': '#F7F9FC',   # Light background
+    'bg_primary': '#F8FAFC',   # Very light blue-gray
     'bg_secondary': '#FFFFFF', # White
-    'bg_tertiary': '#E8EEF4',  # Light gray-blue
-    'text_primary': '#212529', # Dark text
-    'text_secondary': '#6C757D', # Gray text
-    'text_light': '#FFFFFF',   # White text
-    'border': '#DEE2E6',       # Light border
+    'bg_tertiary': '#E2E8F0',  # Light slate
+    'bg_card': '#FFFFFF',      # Card background
+
+    'text_primary': '#1E293B', # Slate-900
+    'text_secondary': '#64748B', # Slate-500
+    'text_light': '#FFFFFF',   # White
+    'text_muted': '#94A3B8',   # Slate-400
+
+    'border': '#E2E8F0',       # Light border
+    'border_dark': '#CBD5E1',  # Darker border
+
+    # Shadow
+    'shadow': '#0000001A',     # 10% black
 
     # Signal colors
-    'signal_high': '#D4EDDA',  # Light green
-    'signal_med': '#FFF3CD',   # Light yellow
-    'signal_low': '#E9ECEF',   # Light gray
+    'signal_high': '#D1FAE5',  # Light emerald
+    'signal_med': '#FEF3C7',   # Light amber
+    'signal_low': '#F1F5F9',   # Light slate
 }
+
+# ============================================================================
+# CUSTOM WIDGETS - PROFESSIONAL UI COMPONENTS
+# ============================================================================
+
+class RoundedButton(tk.Canvas):
+    """Modern rounded button with hover effects"""
+    def __init__(self, parent, text="Button", command=None, bg_color=COLORS['primary'],
+                 text_color=COLORS['text_light'], hover_color=None, width=120, height=40,
+                 corner_radius=8, font=("Segoe UI", 10, "bold"), **kwargs):
+        self.bg_color = bg_color
+        self.text_color = text_color
+        self.hover_color = hover_color or self._darken_color(bg_color)
+        self.corner_radius = corner_radius
+        self.command = command
+        self.width = width
+        self.height = height
+
+        super().__init__(parent, width=width, height=height, bg=COLORS['bg_primary'],
+                        highlightthickness=0, **kwargs)
+
+        # Create rounded rectangle
+        self.rounded_rect = self._create_rounded_rect(2, 2, width-2, height-2, corner_radius, fill=bg_color)
+
+        # Create text
+        self.text_item = self.create_text(width/2, height/2, text=text, fill=text_color, font=font)
+
+        # Bind events
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.bind("<Button-1>", self._on_click)
+
+    def _create_rounded_rect(self, x1, y1, x2, y2, radius, **kwargs):
+        """Create a rounded rectangle"""
+        points = [
+            x1+radius, y1,
+            x2-radius, y1,
+            x2, y1,
+            x2, y1+radius,
+            x2, y2-radius,
+            x2, y2,
+            x2-radius, y2,
+            x1+radius, y2,
+            x1, y2,
+            x1, y2-radius,
+            x1, y1+radius,
+            x1, y1
+        ]
+        return self.create_polygon(points, smooth=True, **kwargs)
+
+    def _darken_color(self, hex_color):
+        """Darken a hex color by 10%"""
+        hex_color = hex_color.lstrip('#')
+        r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        r, g, b = max(0, r-20), max(0, g-20), max(0, b-20)
+        return f'#{r:02x}{g:02x}{b:02x}'
+
+    def _on_enter(self, event):
+        """Hover effect"""
+        self.itemconfig(self.rounded_rect, fill=self.hover_color)
+        self.config(cursor="hand2")
+
+    def _on_leave(self, event):
+        """Remove hover effect"""
+        self.itemconfig(self.rounded_rect, fill=self.bg_color)
+        self.config(cursor="")
+
+    def _on_click(self, event):
+        """Handle click"""
+        if self.command:
+            self.command()
+
+    def configure_text(self, text):
+        """Update button text"""
+        self.itemconfig(self.text_item, text=text)
+
+class CardFrame(tk.Frame):
+    """Card-style frame with shadow effect"""
+    def __init__(self, parent, **kwargs):
+        # Create container with padding for shadow
+        container = tk.Frame(parent, bg=COLORS['bg_primary'])
+        container.pack(**kwargs) if 'pack' not in str(kwargs) else None
+
+        # Shadow frame
+        shadow = tk.Frame(container, bg=COLORS['border'], bd=0)
+        shadow.pack(padx=(2, 0), pady=(2, 0))
+
+        # Main card frame
+        super().__init__(shadow, bg=COLORS['bg_card'], relief=tk.FLAT, bd=0)
+        super().pack(padx=0, pady=0)
+
+        self.container = container
+
+
+def create_stat_card(parent, value="0", label="Stat", color=COLORS['primary']):
+    """Create a modern stat card"""
+    card = tk.Frame(parent, bg=COLORS['bg_card'], relief=tk.FLAT, bd=0)
+
+    # Add subtle border
+    border = tk.Frame(card, bg=color, height=4)
+    border.pack(fill=tk.X, side=tk.TOP)
+
+    # Content area
+    content = tk.Frame(card, bg=COLORS['bg_card'])
+    content.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
+
+    # Value
+    value_label = tk.Label(content, text=value, font=("Segoe UI", 24, "bold"),
+                          bg=COLORS['bg_card'], fg=color)
+    value_label.pack()
+
+    # Label
+    label_widget = tk.Label(content, text=label, font=("Segoe UI", 10),
+                           bg=COLORS['bg_card'], fg=COLORS['text_secondary'])
+    label_widget.pack()
+
+    return card, value_label
 
 # ============================================================================
 # BACKEND FUNCTIONS
@@ -143,7 +283,7 @@ class LeadGeneratorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Calgary Industrial Lead Generator")
-        self.root.geometry("1200x700")
+        self.root.geometry("1280x800")
         self.root.configure(bg=COLORS['bg_primary'])
 
         # Load data
@@ -152,12 +292,34 @@ class LeadGeneratorApp:
         self.tenders = load_json(DATA_DIR / "tenders.json")
 
         # Create UI
+        self.create_header()
         self.create_menu()
         self.create_stats_bar()
         self.create_notebook()
 
         # Update stats
         self.update_stats()
+
+    def create_header(self):
+        """Create modern app header"""
+        header = tk.Frame(self.root, bg=COLORS['primary'], height=70)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+
+        # App title
+        title_frame = tk.Frame(header, bg=COLORS['primary'])
+        title_frame.pack(side=tk.LEFT, padx=30, pady=15)
+
+        tk.Label(title_frame, text="Calgary Industrial Lead Generator",
+                font=("Segoe UI", 18, "bold"), bg=COLORS['primary'],
+                fg=COLORS['text_light']).pack(side=tk.LEFT)
+
+        # Version badge
+        badge = tk.Label(title_frame, text="v2.0",
+                        font=("Segoe UI", 9, "bold"),
+                        bg=COLORS['primary_light'], fg=COLORS['primary'],
+                        padx=8, pady=4)
+        badge.pack(side=tk.LEFT, padx=(15, 0))
 
     def create_menu(self):
         """Create menu bar"""
@@ -177,40 +339,68 @@ class LeadGeneratorApp:
         help_menu.add_command(label="About", command=self.show_about)
 
     def create_stats_bar(self):
-        """Create statistics bar at top"""
-        stats_frame = tk.Frame(self.root, bg=COLORS['bg_primary'], height=80)
-        stats_frame.pack(fill=tk.X, padx=10, pady=10)
-        stats_frame.pack_propagate(False)
+        """Create modern statistics dashboard"""
+        stats_container = tk.Frame(self.root, bg=COLORS['bg_primary'])
+        stats_container.pack(fill=tk.X, padx=20, pady=(15, 10))
 
         # Stats labels
         self.stat_labels = {}
-        stats = [
-            ("Total Leads", "total"),
-            ("With Email", "email"),
-            ("Contacted", "contacted"),
-            ("Follow-ups Due", "followup"),
-            ("New Tenders", "tenders")
+        stats_config = [
+            ("Total Leads", "total", COLORS['primary']),
+            ("With Email", "email", COLORS['success']),
+            ("Contacted", "contacted", COLORS['info']),
+            ("Follow-ups Due", "followup", COLORS['warning']),
+            ("New Tenders", "tenders", COLORS['secondary'])
         ]
 
-        for i, (label, key) in enumerate(stats):
-            frame = tk.Frame(stats_frame, bg=COLORS['bg_secondary'], relief=tk.RAISED,
-                           borderwidth=1, highlightbackground=COLORS['border'], highlightthickness=1)
-            frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        for i, (label, key, color) in enumerate(stats_config):
+            # Create card frame with shadow effect
+            card_container = tk.Frame(stats_container, bg=COLORS['bg_primary'])
+            card_container.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6)
 
-            value_label = tk.Label(frame, text="0", font=("Arial", 20, "bold"),
-                                  bg=COLORS['bg_secondary'], fg=COLORS['primary'])
-            value_label.pack(pady=(10, 0))
+            # Shadow
+            shadow = tk.Frame(card_container, bg=COLORS['border_dark'])
+            shadow.pack(fill=tk.BOTH, expand=True, padx=(0, 2), pady=(0, 2))
 
-            text_label = tk.Label(frame, text=label, font=("Arial", 9),
-                                 bg=COLORS['bg_secondary'], fg=COLORS['text_secondary'])
-            text_label.pack(pady=(0, 10))
+            # Card
+            card = tk.Frame(shadow, bg=COLORS['bg_card'], relief=tk.FLAT, bd=0)
+            card.pack(fill=tk.BOTH, expand=True)
+
+            # Top colored bar
+            top_bar = tk.Frame(card, bg=color, height=5)
+            top_bar.pack(fill=tk.X, side=tk.TOP)
+
+            # Content
+            content = tk.Frame(card, bg=COLORS['bg_card'])
+            content.pack(fill=tk.BOTH, expand=True, padx=15, pady=12)
+
+            # Value
+            value_label = tk.Label(content, text="0", font=("Segoe UI", 28, "bold"),
+                                  bg=COLORS['bg_card'], fg=color)
+            value_label.pack()
+
+            # Label
+            text_label = tk.Label(content, text=label, font=("Segoe UI", 10),
+                                 bg=COLORS['bg_card'], fg=COLORS['text_secondary'])
+            text_label.pack(pady=(2, 0))
 
             self.stat_labels[key] = value_label
 
     def create_notebook(self):
-        """Create tabbed interface"""
+        """Create modern tabbed interface"""
+        # Style the notebook
+        style = ttk.Style()
+        style.theme_use('clam')  # Use clam theme for better customization
+        style.configure('TNotebook', background=COLORS['bg_primary'], borderwidth=0)
+        style.configure('TNotebook.Tab', padding=[20, 12], font=('Segoe UI', 10, 'bold'),
+                       background=COLORS['bg_tertiary'], foreground=COLORS['text_primary'])
+        style.map('TNotebook.Tab',
+                 background=[('selected', COLORS['bg_card'])],
+                 foreground=[('selected', COLORS['primary'])],
+                 expand=[('selected', [1, 1, 1, 0])])
+
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 15))
 
         # Create tabs
         self.create_leads_tab()
@@ -222,12 +412,19 @@ class LeadGeneratorApp:
 
     def create_leads_tab(self):
         """Create leads management tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="📋 Leads")
 
-        # Search and filter frame
-        filter_frame = tk.Frame(tab)
-        filter_frame.pack(fill=tk.X, padx=10, pady=10)
+        # Search and filter frame - Modern card style
+        filter_container = tk.Frame(tab, bg=COLORS['bg_primary'])
+        filter_container.pack(fill=tk.X, padx=20, pady=(15, 10))
+
+        # Shadow for filter card
+        filter_shadow = tk.Frame(filter_container, bg=COLORS['border_dark'])
+        filter_shadow.pack(fill=tk.X, padx=(0, 2), pady=(0, 2))
+
+        filter_frame = tk.Frame(filter_shadow, bg=COLORS['bg_card'])
+        filter_frame.pack(fill=tk.X, padx=15, pady=12)
 
         tk.Label(filter_frame, text="Search:").pack(side=tk.LEFT, padx=(0, 5))
         self.search_var = tk.StringVar()
@@ -249,13 +446,21 @@ class LeadGeneratorApp:
         self.enrichment_filter.bind('<<ComboboxSelected>>', lambda e: self.refresh_leads())
         self.enrichment_filter.pack(side=tk.LEFT, padx=(0, 20))
 
-        tk.Button(filter_frame, text="🔄 Refresh", command=self.refresh_leads).pack(side=tk.LEFT)
-        tk.Button(filter_frame, text="✅ Validate All Emails", command=self.bulk_validate_emails,
-                 bg=COLORS['success'], fg=COLORS['text_light'], padx=10, pady=4).pack(side=tk.LEFT, padx=(10, 0))
+        RoundedButton(filter_frame, text="🔄 Refresh", command=self.refresh_leads,
+                     bg_color=COLORS['info'], width=110, height=36, corner_radius=6).pack(side=tk.LEFT, padx=5)
+        RoundedButton(filter_frame, text="✅ Validate Emails", command=self.bulk_validate_emails,
+                     bg_color=COLORS['success'], width=150, height=36, corner_radius=6).pack(side=tk.LEFT, padx=5)
 
-        # Leads table
-        table_frame = tk.Frame(tab)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+        # Leads table - Card style container
+        table_container = tk.Frame(tab, bg=COLORS['bg_primary'])
+        table_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(10, 10))
+
+        # Shadow for table card
+        table_shadow = tk.Frame(table_container, bg=COLORS['border_dark'])
+        table_shadow.pack(fill=tk.BOTH, expand=True, padx=(0, 2), pady=(0, 2))
+
+        table_frame = tk.Frame(table_shadow, bg=COLORS['bg_card'])
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
         # Scrollbars
         vsb = ttk.Scrollbar(table_frame, orient="vertical")
@@ -290,31 +495,38 @@ class LeadGeneratorApp:
         # Double-click to edit
         self.leads_tree.bind('<Double-Button-1>', self.edit_lead)
 
-        # Buttons
-        btn_frame = tk.Frame(tab)
-        btn_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # Buttons - Modern rounded style
+        btn_frame = tk.Frame(tab, bg=COLORS['bg_primary'])
+        btn_frame.pack(fill=tk.X, padx=20, pady=(10, 15))
 
-        tk.Button(btn_frame, text="✏️ Edit Selected", command=self.edit_lead,
-                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🔄 Re-enrich Selected", command=self.re_enrich_lead,
-                 bg=COLORS['secondary'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🚀 Bulk Enrich Unenriched", command=self.bulk_enrich_unenriched,
-                 bg=COLORS['success'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🔍 Find Duplicates", command=self.show_duplicates_dialog,
-                 bg=COLORS['warning'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
-                 bg=COLORS['danger'], fg=COLORS['text_light'], padx=10, pady=6).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="✏️ Edit Selected", command=self.edit_lead,
+                     bg_color=COLORS['primary'], width=150, height=42).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="🔄 Re-enrich Selected", command=self.re_enrich_lead,
+                     bg_color=COLORS['secondary'], width=170, height=42).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="🚀 Bulk Enrich", command=self.bulk_enrich_unenriched,
+                     bg_color=COLORS['success'], width=140, height=42).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="🔍 Find Duplicates", command=self.show_duplicates_dialog,
+                     bg_color=COLORS['warning'], width=160, height=42).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="🗑️ Delete Selected", command=self.delete_lead,
+                     bg_color=COLORS['danger'], width=150, height=42).pack(side=tk.LEFT, padx=5)
 
         self.refresh_leads()
 
     def create_add_tab(self):
         """Create add new lead tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="➕ Add New")
 
-        # Create form in a frame
-        form_frame = tk.Frame(tab)
-        form_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        # Create form in a card
+        form_container = tk.Frame(tab, bg=COLORS['bg_primary'])
+        form_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+
+        # Shadow for form card
+        form_shadow = tk.Frame(form_container, bg=COLORS['border_dark'])
+        form_shadow.pack(fill=tk.BOTH, expand=True, padx=(0, 2), pady=(0, 2))
+
+        form_frame = tk.Frame(form_shadow, bg=COLORS['bg_card'])
+        form_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
 
         # Form fields
         fields = [
@@ -360,16 +572,16 @@ class LeadGeneratorApp:
         btn_frame = tk.Frame(form_frame)
         btn_frame.grid(row=row, column=1, pady=20, sticky=tk.W)
 
-        tk.Button(btn_frame, text="➕ Add Lead", command=self.add_lead,
-                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="➕ Add & Scrape Website", command=self.add_and_scrape,
-                 bg=COLORS['success'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="🗑️ Clear Form", command=self.clear_add_form,
-                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=20, pady=8).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="➕ Add Lead", command=self.add_lead,
+                     bg_color=COLORS['primary'], width=140, height=44).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="➕ Add & Scrape", command=self.add_and_scrape,
+                     bg_color=COLORS['success'], width=160, height=44).pack(side=tk.LEFT, padx=5)
+        RoundedButton(btn_frame, text="🗑️ Clear Form", command=self.clear_add_form,
+                     bg_color=COLORS['text_secondary'], width=130, height=44).pack(side=tk.LEFT, padx=5)
 
     def create_import_tab(self):
         """Create import tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="📁 Import")
 
         # LinkedIn Import section
@@ -385,8 +597,8 @@ class LeadGeneratorApp:
         tk.Checkbutton(li_frame, text="Only import target titles (managers, directors, etc.)",
                       variable=self.li_filter_var).pack(anchor=tk.W, pady=(0, 10))
 
-        tk.Button(li_frame, text="📂 Select LinkedIn CSV File", command=self.import_linkedin,
-                 bg=COLORS['info'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        RoundedButton(li_frame, text="📂 Select LinkedIn CSV File", command=self.import_linkedin,
+                     bg_color=COLORS['info'], width=220, height=44).pack(anchor=tk.W, pady=5)
 
         # CSV Import section
         csv_frame = tk.LabelFrame(tab, text="Import from CSV", padx=20, pady=20)
@@ -395,12 +607,12 @@ class LeadGeneratorApp:
         tk.Label(csv_frame, text="Import a CSV file with columns: company, website, email, phone, industry, contact_name, contact_title",
                 wraplength=600, justify=tk.LEFT).pack(anchor=tk.W, pady=(0, 10))
 
-        tk.Button(csv_frame, text="📂 Select CSV File", command=self.import_csv,
-                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(anchor=tk.W)
+        RoundedButton(csv_frame, text="📂 Select CSV File", command=self.import_csv,
+                     bg_color=COLORS['primary'], width=180, height=44).pack(anchor=tk.W, pady=5)
 
     def create_outreach_tab(self):
         """Create outreach tracking tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="📧 Outreach")
 
         # Stats frame
@@ -444,27 +656,27 @@ class LeadGeneratorApp:
                                      state="readonly")
         template_combo.pack(side=tk.LEFT, padx=(0, 20))
 
-        tk.Button(sel_frame, text="📝 Generate Draft", command=self.generate_draft,
-                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT)
+        RoundedButton(sel_frame, text="📝 Generate Draft", command=self.generate_draft,
+                     bg_color=COLORS['primary'], width=160, height=38).pack(side=tk.LEFT, padx=5)
 
         # Draft display
         self.draft_display = scrolledtext.ScrolledText(draft_frame, height=15, wrap=tk.WORD)
         self.draft_display.pack(fill=tk.BOTH, expand=True, pady=(10, 10))
 
         # Draft buttons
-        draft_btn_frame = tk.Frame(draft_frame)
+        draft_btn_frame = tk.Frame(draft_frame, bg=COLORS['bg_primary'])
         draft_btn_frame.pack(fill=tk.X)
 
-        tk.Button(draft_btn_frame, text="📋 Copy to Clipboard", command=self.copy_draft,
-                 bg=COLORS['text_secondary'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        tk.Button(draft_btn_frame, text="✅ Mark as Sent", command=self.mark_sent,
-                 bg=COLORS['success'], fg=COLORS['text_light'], padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+        RoundedButton(draft_btn_frame, text="📋 Copy to Clipboard", command=self.copy_draft,
+                     bg_color=COLORS['text_secondary'], width=180, height=38).pack(side=tk.LEFT, padx=5)
+        RoundedButton(draft_btn_frame, text="✅ Mark as Sent", command=self.mark_sent,
+                     bg_color=COLORS['success'], width=160, height=38).pack(side=tk.LEFT, padx=5)
 
         self.update_outreach_stats()
 
     def create_tenders_tab(self):
         """Create tenders monitoring tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="📢 Tenders")
 
         # Info and check button
@@ -474,8 +686,8 @@ class LeadGeneratorApp:
         tk.Label(top_frame, text="Monitor government and public sector contract opportunities",
                 font=("Arial", 10)).pack(side=tk.LEFT)
 
-        tk.Button(top_frame, text="🔄 Check for New Tenders", command=self.check_tenders,
-                 bg=COLORS['primary'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack(side=tk.RIGHT)
+        RoundedButton(top_frame, text="🔄 Check for New Tenders", command=self.check_tenders,
+                     bg_color=COLORS['primary'], width=220, height=42).pack(side=tk.RIGHT, padx=5)
 
         # Tenders list
         self.tenders_text = scrolledtext.ScrolledText(tab, wrap=tk.WORD)
@@ -485,7 +697,7 @@ class LeadGeneratorApp:
 
     def create_settings_tab(self):
         """Create settings tab"""
-        tab = tk.Frame(self.notebook)
+        tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="⚙️ Settings")
 
         # Your Info section
@@ -604,12 +816,12 @@ class LeadGeneratorApp:
         self.credits_display.config(state=tk.DISABLED)
 
         # Refresh credits button
-        tk.Button(credit_frame, text="🔄 Check API Credits", command=self.refresh_api_credits,
-                 bg=COLORS['info'], fg=COLORS['text_light'], padx=20, pady=8, font=("Arial", 10, "bold")).pack()
+        RoundedButton(credit_frame, text="🔄 Check API Credits", command=self.refresh_api_credits,
+                     bg_color=COLORS['info'], width=200, height=44).pack(pady=5)
 
         # Save button
-        tk.Button(tab, text="💾 Save Settings", command=self.save_settings,
-                 bg=COLORS['success'], fg=COLORS['text_light'], padx=30, pady=10, font=("Arial", 11, "bold")).pack(pady=20)
+        RoundedButton(tab, text="💾 Save Settings", command=self.save_settings,
+                     bg_color=COLORS['success'], width=220, height=50, font=("Segoe UI", 11, "bold")).pack(pady=20)
 
     # ========================================================================
     # DATA METHODS
