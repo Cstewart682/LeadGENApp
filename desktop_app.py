@@ -987,11 +987,19 @@ class LeadGeneratorApp:
         """Fetch remaining API credits for all configured services"""
         credits = {}
 
+        # Helper function to get current value from form or config
+        def get_current_value(key):
+            if hasattr(self, 'config_vars') and key in self.config_vars:
+                return self.config_vars[key].get()
+            return self.config.get(key)
+
         # ZeroBounce credits
-        if self.config.get('zerobounce_api_key') and self.config.get('zerobounce_enabled', True):
+        zerobounce_key = get_current_value('zerobounce_api_key')
+        zerobounce_enabled = get_current_value('zerobounce_enabled')
+        if zerobounce_key and zerobounce_enabled:
             try:
                 from zerobounce_integration import ZeroBounceIntegration
-                zb = ZeroBounceIntegration(self.config['zerobounce_api_key'])
+                zb = ZeroBounceIntegration(zerobounce_key)
                 result = zb.get_credits()
                 if result.get('success'):
                     credits['zerobounce'] = {
@@ -1011,31 +1019,41 @@ class LeadGeneratorApp:
 
         # Note: Most other APIs don't provide credit checking endpoints
         # Adding placeholders for consistency
-        if self.config.get('hunter_api_key') and self.config.get('hunter_enabled', True):
+        hunter_key = get_current_value('hunter_api_key')
+        hunter_enabled = get_current_value('hunter_enabled')
+        if hunter_key and hunter_enabled:
             credits['hunter'] = {
                 'available': 'Check hunter.io dashboard',
                 'status': 'API key configured'
             }
 
-        if self.config.get('apollo_api_key') and self.config.get('apollo_enabled', True):
+        apollo_key = get_current_value('apollo_api_key')
+        apollo_enabled = get_current_value('apollo_enabled')
+        if apollo_key and apollo_enabled:
             credits['apollo'] = {
                 'available': 'Check app.apollo.io dashboard',
                 'status': 'API key configured'
             }
 
-        if self.config.get('pdl_api_key') and self.config.get('pdl_enabled', True):
+        pdl_key = get_current_value('pdl_api_key')
+        pdl_enabled = get_current_value('pdl_enabled')
+        if pdl_key and pdl_enabled:
             credits['peopledatalabs'] = {
                 'available': 'Check peopledatalabs.com dashboard',
                 'status': 'API key configured'
             }
 
-        if self.config.get('google_places_api_key') and self.config.get('google_places_enabled', True):
+        google_key = get_current_value('google_places_api_key')
+        google_enabled = get_current_value('google_places_enabled')
+        if google_key and google_enabled:
             credits['google_places'] = {
                 'available': 'Check console.cloud.google.com',
                 'status': 'API key configured'
             }
 
-        if self.config.get('proxycurl_api_key') and self.config.get('proxycurl_enabled', True):
+        proxycurl_key = get_current_value('proxycurl_api_key')
+        proxycurl_enabled = get_current_value('proxycurl_enabled')
+        if proxycurl_key and proxycurl_enabled:
             credits['proxycurl'] = {
                 'available': 'Check nubela.co dashboard',
                 'status': 'API key configured'
@@ -1183,49 +1201,83 @@ class LeadGeneratorApp:
         """Get list of all contact rows to display (each email/phone as separate row)"""
         rows = []
 
-        # Add contact name first if available
-        if lead.get('contact_name'):
-            name_part = f"👤 {lead['contact_name']}"
-            if lead.get('contact_title'):
-                name_part += f" ({lead['contact_title']})"
-            rows.append(name_part)
+        # Check if we have structured contacts data from enrichment
+        contact_details = lead.get('contact_details', [])
 
-        # Get all emails
-        all_emails = lead.get('all_emails', [])
-        general_email = lead.get('general_email', '')
-        contact_email = lead.get('contact_email', '')
+        if contact_details:
+            # Display each enriched contact with their full info
+            for i, contact in enumerate(contact_details):
+                # Contact name and title
+                if contact.get('name'):
+                    name_part = f"👤 {contact['name']}"
+                    if contact.get('title'):
+                        name_part += f" ({contact['title']})"
+                    rows.append(name_part)
 
-        # If all_emails not populated, use individual email fields
-        if not all_emails:
-            if general_email:
-                all_emails.append(general_email)
-            if contact_email and contact_email not in all_emails:
-                all_emails.append(contact_email)
+                # Contact's email
+                if contact.get('email'):
+                    rows.append(f"   📧 {contact['email']}")
 
-        # Add each email as a separate row
-        for i, email in enumerate(all_emails):
-            if email == general_email or i == 0:
-                rows.append(f"📧 {email} (Primary)")
-            elif email == contact_email:
-                rows.append(f"📧 {email} (Contact)")
-            else:
-                rows.append(f"📧 {email}")
+                # Contact's phone
+                if contact.get('phone'):
+                    rows.append(f"   📞 {contact['phone']}")
 
-        # Get all phones
-        all_phones = lead.get('all_phones', [])
-        general_phone = lead.get('general_phone', '')
+                # Add spacing between contacts (but not after the last one)
+                if i < len(contact_details) - 1:
+                    rows.append("")
 
-        # If all_phones not populated, use individual phone field
-        if not all_phones:
-            if general_phone:
-                all_phones.append(general_phone)
+        else:
+            # Legacy display: Show main contact, then all emails, then all phones
+            # Add contact name first if available
+            if lead.get('contact_name'):
+                name_part = f"👤 {lead['contact_name']}"
+                if lead.get('contact_title'):
+                    name_part += f" ({lead['contact_title']})"
+                rows.append(name_part)
 
-        # Add each phone as a separate row
-        for i, phone in enumerate(all_phones):
-            if phone == general_phone or i == 0:
-                rows.append(f"📞 {phone} (Main)")
-            else:
-                rows.append(f"📞 {phone}")
+            # Get all emails
+            all_emails = lead.get('all_emails', [])
+            general_email = lead.get('general_email', '')
+            contact_email = lead.get('contact_email', '')
+
+            # If all_emails not populated, use individual email fields
+            if not all_emails:
+                if general_email:
+                    all_emails.append(general_email)
+                if contact_email and contact_email not in all_emails:
+                    all_emails.append(contact_email)
+
+            # Add each email as a separate row
+            for i, email in enumerate(all_emails):
+                if email == general_email or i == 0:
+                    rows.append(f"📧 {email} (Primary)")
+                elif email == contact_email:
+                    rows.append(f"📧 {email} (Contact)")
+                else:
+                    rows.append(f"📧 {email}")
+
+            # Get all phones
+            all_phones = lead.get('all_phones', [])
+            general_phone = lead.get('general_phone', '')
+
+            # If all_phones not populated, use individual phone field
+            if not all_phones:
+                if general_phone:
+                    all_phones.append(general_phone)
+
+            # Add each phone as a separate row with better context
+            for i, phone in enumerate(all_phones):
+                if phone == general_phone or i == 0:
+                    rows.append(f"📞 {phone} (Main)")
+                elif len(all_phones) > 1:
+                    # If multiple phones, add alternate numbering for clarity
+                    rows.append(f"📞 {phone} (Alternate {i})")
+                else:
+                    rows.append(f"📞 {phone}")
+
+            # Add helpful note if multiple contacts exist but aren't structured
+            if len(all_phones) > 2 or len(all_emails) > 2:
+                rows.append("ℹ️  Multiple contacts found - consider re-enriching for details")
 
         return rows if rows else ["-"]
 
