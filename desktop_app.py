@@ -517,8 +517,29 @@ class LeadGeneratorApp:
         tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="➕ Add New")
 
+        # Create scrollable container
+        canvas = tk.Canvas(tab, bg=COLORS['bg_primary'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=COLORS['bg_primary'])
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
         # Create form in a card
-        form_container = tk.Frame(tab, bg=COLORS['bg_primary'])
+        form_container = tk.Frame(scrollable_frame, bg=COLORS['bg_primary'])
         form_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # Shadow for form card
@@ -700,8 +721,29 @@ class LeadGeneratorApp:
         tab = tk.Frame(self.notebook, bg=COLORS['bg_primary'])
         self.notebook.add(tab, text="⚙️ Settings")
 
+        # Create scrollable container
+        canvas = tk.Canvas(tab, bg=COLORS['bg_primary'], highlightthickness=0)
+        scrollbar = tk.Scrollbar(tab, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=COLORS['bg_primary'])
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
         # Your Info section
-        info_frame = tk.LabelFrame(tab, text="Your Information (for email templates)",
+        info_frame = tk.LabelFrame(scrollable_frame, text="Your Information (for email templates)",
                                    padx=20, pady=15)
         info_frame.pack(fill=tk.X, padx=20, pady=10)
 
@@ -724,7 +766,7 @@ class LeadGeneratorApp:
             self.config_vars[key] = var
 
         # API Keys section
-        api_frame = tk.LabelFrame(tab, text="API Keys (for Enhanced Intelligence)", padx=20, pady=15)
+        api_frame = tk.LabelFrame(scrollable_frame, text="API Keys (for Enhanced Intelligence)", padx=20, pady=15)
         api_frame.pack(fill=tk.X, padx=20, pady=10)
 
         # Hunter.io
@@ -782,7 +824,7 @@ class LeadGeneratorApp:
         tk.Checkbutton(api_frame, text="Enabled", variable=self.config_vars['proxycurl_enabled']).grid(row=5, column=3, sticky=tk.W, padx=(10, 0))
 
         # Jobber section
-        jobber_frame = tk.LabelFrame(tab, text="Jobber CRM Integration", padx=20, pady=15)
+        jobber_frame = tk.LabelFrame(scrollable_frame, text="Jobber CRM Integration", padx=20, pady=15)
         jobber_frame.pack(fill=tk.X, padx=20, pady=10)
 
         tk.Label(jobber_frame, text="Client ID").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -794,7 +836,7 @@ class LeadGeneratorApp:
         tk.Entry(jobber_frame, textvariable=self.config_vars['jobber_client_secret'], width=40, show="*").grid(row=1, column=1, pady=5)
 
         # Tender keywords section
-        tender_frame = tk.LabelFrame(tab, text="Tender Monitoring Keywords", padx=20, pady=15)
+        tender_frame = tk.LabelFrame(scrollable_frame, text="Tender Monitoring Keywords", padx=20, pady=15)
         tender_frame.pack(fill=tk.X, padx=20, pady=10)
 
         tk.Label(tender_frame, text="Keywords (comma-separated)").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -806,7 +848,7 @@ class LeadGeneratorApp:
         tk.Entry(tender_frame, textvariable=self.config_vars['tender_locations'], width=60).grid(row=1, column=1, pady=5)
 
         # API Credit Dashboard section
-        credit_frame = tk.LabelFrame(tab, text="API Credit Dashboard", padx=20, pady=15)
+        credit_frame = tk.LabelFrame(scrollable_frame, text="API Credit Dashboard", padx=20, pady=15)
         credit_frame.pack(fill=tk.X, padx=20, pady=10)
 
         # Create text widget to display credits
@@ -820,7 +862,7 @@ class LeadGeneratorApp:
                      bg_color=COLORS['info'], width=200, height=44).pack(pady=5)
 
         # Save button
-        RoundedButton(tab, text="💾 Save Settings", command=self.save_settings,
+        RoundedButton(scrollable_frame, text="💾 Save Settings", command=self.save_settings,
                      bg_color=COLORS['success'], width=220, height=50, font=("Segoe UI", 11, "bold")).pack(pady=20)
 
     # ========================================================================
