@@ -122,8 +122,14 @@ class EnhancedWebScraper:
             print(f"Error discovering pages: {e}")
             return [base_url]  # Fall back to just homepage
 
-    def extract_emails(self, text: str) -> Set[str]:
-        """Extract email addresses from text"""
+    def extract_emails(self, text: str, is_html: bool = False) -> Set[str]:
+        """
+        Extract email addresses from text
+
+        Args:
+            text: Text or HTML to extract from
+            is_html: If True, applies stricter filtering for HTML context
+        """
         email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         emails = set(re.findall(email_pattern, text))
 
@@ -131,9 +137,29 @@ class EnhancedWebScraper:
         filtered_emails = set()
         for email in emails:
             email_lower = email.lower()
+
             # Skip placeholder emails
-            if not any(skip in email_lower for skip in ['example.com', 'domain.com', 'yoursite.com', 'test@']):
-                filtered_emails.add(email)
+            if any(skip in email_lower for skip in ['example.com', 'domain.com', 'yoursite.com', 'test@']):
+                continue
+
+            # Skip image file extensions that might have @ symbols (e.g., logo@2x.png)
+            if is_html and any(email_lower.endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp']):
+                continue
+
+            # Skip if it looks like an image file pattern (contains @2x, @3x, @large, etc.)
+            if is_html and re.search(r'@\d+x\.(png|jpg|jpeg|gif|webp)', email_lower):
+                continue
+
+            # Skip CSS/image paths (contains common web asset patterns)
+            if is_html and any(pattern in email_lower for pattern in ['@media', '@import', '@font', '@2x.', '@3x.', '@large.', '@small.']):
+                continue
+
+            # Must have at least one letter before @ (not just numbers)
+            local_part = email.split('@')[0]
+            if not re.search(r'[A-Za-z]', local_part):
+                continue
+
+            filtered_emails.add(email)
 
         return filtered_emails
 
@@ -191,17 +217,44 @@ class EnhancedWebScraper:
             # Get text content
             text = soup.get_text()
 
-            # Also check raw HTML for obfuscated emails
+            # Also check raw HTML for obfuscated emails (with stricter filtering)
             html = response.text
 
-            # Extract data
-            emails = self.extract_emails(text).union(self.extract_emails(html))
+            # Extract emails from visible text
+            emails_from_text = self.extract_emails(text, is_html=False)
+
+            # Extract emails from HTML (with image filtering)
+            emails_from_html = self.extract_emails(html, is_html=True)
+
+            # Extract emails from mailto: links
+            emails_from_mailto = set()
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if href.startswith('mailto:'):
+                    # Extract email from mailto:email@domain.com
+                    email = href.replace('mailto:', '').split('?')[0].strip()
+                    if '@' in email:
+                        emails_from_mailto.add(email)
+
+            # Extract emails from meta tags (often used for contact info)
+            emails_from_meta = set()
+            for meta in soup.find_all('meta'):
+                content = meta.get('content', '')
+                if '@' in content:
+                    emails_from_meta.update(self.extract_emails(content, is_html=False))
+
+            # Combine all email sources
+            all_emails = emails_from_text | emails_from_html | emails_from_mailto | emails_from_meta
+
+            # Extract phone numbers
             phones = self.extract_phones(text)
+
+            # Detect buying signals
             signals, score = self.detect_signals(text)
 
             return {
                 'url': url,
-                'emails': list(emails),
+                'emails': list(all_emails),
                 'phones': list(phones),
                 'signals': signals,
                 'score': score

@@ -1206,6 +1206,9 @@ class LeadGeneratorApp:
 
         if contact_details:
             # Display each enriched contact with their full info
+            enriched_emails = set()
+            enriched_phones = set()
+
             for i, contact in enumerate(contact_details):
                 # Contact name and title
                 if contact.get('name'):
@@ -1217,67 +1220,116 @@ class LeadGeneratorApp:
                 # Contact's email
                 if contact.get('email'):
                     rows.append(f"   📧 {contact['email']}")
+                    enriched_emails.add(contact['email'])
 
                 # Contact's phone
                 if contact.get('phone'):
                     rows.append(f"   📞 {contact['phone']}")
+                    enriched_phones.add(contact['phone'])
 
                 # Add spacing between contacts (but not after the last one)
                 if i < len(contact_details) - 1:
                     rows.append("")
 
+            # Check for orphaned emails/phones from web scraping
+            all_emails = set(lead.get('all_emails', []))
+            all_phones = set(lead.get('all_phones', []))
+
+            orphaned_emails = all_emails - enriched_emails
+            orphaned_phones = all_phones - enriched_phones
+
+            # Display orphaned contact info (from web scraping)
+            if orphaned_emails or orphaned_phones:
+                if rows:  # Add spacing if we already have enriched contacts
+                    rows.append("")
+                rows.append("📄 Additional Info (from website):")
+
+                # Show orphaned emails
+                for email in sorted(orphaned_emails):
+                    rows.append(f"   📧 {email} (Found on website)")
+
+                # Show orphaned phones
+                for phone in sorted(orphaned_phones):
+                    rows.append(f"   📞 {phone} (Found on website)")
+
         else:
-            # Legacy display: Show main contact, then all emails, then all phones
-            # Add contact name first if available
+            # No enriched contacts - display scraped data with better labeling
+
+            # Try to create pseudo-contacts from scraped emails
+            all_emails = lead.get('all_emails', [])
+            all_phones = lead.get('all_phones', [])
+            general_email = lead.get('general_email', '')
+            contact_email = lead.get('contact_email', '')
+            general_phone = lead.get('general_phone', '')
+
+            # If we have a main contact name/title, show it first
             if lead.get('contact_name'):
                 name_part = f"👤 {lead['contact_name']}"
                 if lead.get('contact_title'):
                     name_part += f" ({lead['contact_title']})"
                 rows.append(name_part)
 
-            # Get all emails
-            all_emails = lead.get('all_emails', [])
-            general_email = lead.get('general_email', '')
-            contact_email = lead.get('contact_email', '')
+                # Associate primary email/phone with named contact
+                if contact_email:
+                    rows.append(f"   📧 {contact_email}")
+                elif general_email:
+                    rows.append(f"   📧 {general_email}")
 
-            # If all_emails not populated, use individual email fields
-            if not all_emails:
-                if general_email:
-                    all_emails.append(general_email)
-                if contact_email and contact_email not in all_emails:
-                    all_emails.append(contact_email)
+                rows.append("")  # Spacing
 
-            # Add each email as a separate row
-            for i, email in enumerate(all_emails):
-                if email == general_email or i == 0:
-                    rows.append(f"📧 {email} (Primary)")
-                elif email == contact_email:
-                    rows.append(f"📧 {email} (Contact)")
-                else:
-                    rows.append(f"📧 {email}")
+            # Show general contact section (company-wide)
+            if general_email or general_phone or all_emails or all_phones:
+                rows.append("📞 Company Contact Information:")
 
-            # Get all phones
-            all_phones = lead.get('all_phones', [])
-            general_phone = lead.get('general_phone', '')
+                # Primary email
+                if general_email and general_email != contact_email:
+                    rows.append(f"   📧 {general_email} (General/Info)")
 
-            # If all_phones not populated, use individual phone field
-            if not all_phones:
+                # Primary phone
                 if general_phone:
-                    all_phones.append(general_phone)
+                    rows.append(f"   📞 {general_phone} (Main Line)")
 
-            # Add each phone as a separate row with better context
-            for i, phone in enumerate(all_phones):
-                if phone == general_phone or i == 0:
-                    rows.append(f"📞 {phone} (Main)")
-                elif len(all_phones) > 1:
-                    # If multiple phones, add alternate numbering for clarity
-                    rows.append(f"📞 {phone} (Alternate {i})")
-                else:
-                    rows.append(f"📞 {phone}")
+                # Additional emails from website
+                if all_emails:
+                    shown_emails = {general_email, contact_email} if contact_email else {general_email}
+                    additional_emails = [e for e in all_emails if e not in shown_emails]
 
-            # Add helpful note if multiple contacts exist but aren't structured
-            if len(all_phones) > 2 or len(all_emails) > 2:
-                rows.append("ℹ️  Multiple contacts found - consider re-enriching for details")
+                    if additional_emails:
+                        rows.append("")
+                        rows.append("   Additional emails found on website:")
+                        for i, email in enumerate(additional_emails, 1):
+                            # Try to infer type from email prefix
+                            email_lower = email.lower()
+                            if any(prefix in email_lower for prefix in ['info@', 'contact@', 'hello@']):
+                                rows.append(f"      📧 {email} (General)")
+                            elif any(prefix in email_lower for prefix in ['sales@', 'sales.']):
+                                rows.append(f"      📧 {email} (Sales)")
+                            elif any(prefix in email_lower for prefix in ['support@', 'help@']):
+                                rows.append(f"      📧 {email} (Support)")
+                            else:
+                                # Try to extract name from email
+                                name_part = email.split('@')[0]
+                                if '.' in name_part:
+                                    possible_name = name_part.replace('.', ' ').title()
+                                    rows.append(f"      📧 {email} (Possibly: {possible_name})")
+                                else:
+                                    rows.append(f"      📧 {email}")
+
+                # Additional phones from website
+                if all_phones:
+                    shown_phones = {general_phone}
+                    additional_phones = [p for p in all_phones if p not in shown_phones]
+
+                    if additional_phones:
+                        rows.append("")
+                        rows.append("   Additional phones found on website:")
+                        for i, phone in enumerate(additional_phones, 1):
+                            rows.append(f"      📞 {phone} (Line {i+1})")
+
+            # Add helpful message
+            if (len(all_phones) > 1 or len(all_emails) > 1):
+                rows.append("")
+                rows.append("💡 Tip: Click 'Enrich' to get names & titles for these contacts")
 
         return rows if rows else ["-"]
 
